@@ -2,7 +2,7 @@
      When the gateway can't reach the MI (MI down, timeout) return the same error format the MI uses
      instead of the default APIM error -->
 
-<!-- map the error code to a status and message (same messages as GatewayFaultSeq in the MI) -->
+
 <switch source="get-property('ERROR_CODE')">
     <case regex="101504|101508">
         <property name="gwErrorStatus" value="504"/>
@@ -45,7 +45,7 @@
     </args>
 </payloadFactory>
 
-<!-- the message still has the request's headers (Authorization etc.), don't send them back -->
+
 <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
 <header name="X-Correlation-ID" scope="transport" expression="get-property('gwRequestId')"/>
 <header name="Cache-Control" scope="transport" value="no-store"/>
@@ -54,6 +54,5 @@
 <property name="HTTP_SC" expression="get-property('gwErrorStatus')" scope="axis2"/>
 <property name="messageType" value="application/json" scope="axis2"/>
 <property name="ContentType" value="application/json" scope="axis2"/>
-<!-- GET requests are marked as having no body, so the error body would be dropped without this -->
 <property name="NO_ENTITY_BODY" action="remove" scope="axis2"/>
 <respond/>
