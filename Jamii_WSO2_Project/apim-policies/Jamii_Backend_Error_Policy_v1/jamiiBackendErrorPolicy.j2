@@ -1,0 +1,59 @@
+<!-- Custom APIM policy: Jamii Backend Error Policy (fault flow).
+     When the gateway can't reach the MI (MI down, timeout) return the same error format the MI uses
+     instead of the default APIM error -->
+
+<!-- map the error code to a status and message (same messages as GatewayFaultSeq in the MI) -->
+<switch source="get-property('ERROR_CODE')">
+    <case regex="101504|101508">
+        <property name="gwErrorStatus" value="504"/>
+        <property name="gwErrorMessage" value="Gateway timeout. Upstream service did not respond in time"/>
+    </case>
+    <case regex="1015[0-9][0-9]|30300[0-9]">
+        <property name="gwErrorStatus" value="503"/>
+        <property name="gwErrorMessage" value="Service unavailable. Upstream service is unreachable"/>
+    </case>
+    <default>
+        <property name="gwErrorStatus" value="500"/>
+        <property name="gwErrorMessage" value="Internal server error"/>
+    </default>
+</switch>
+
+<!-- use the caller's X-Correlation-ID if they sent one, otherwise the gateway's message id -->
+<property name="gwRequestId" expression="get-property('transport', 'X-Correlation-ID')"/>
+<filter xpath="string-length(get-property('gwRequestId')) = 0">
+    <then>
+        <property name="gwRequestId" expression="substring-after(get-property('MessageID'), 'urn:uuid:')"/>
+    </then>
+</filter>
+<property name="gwTimestamp" expression="get-property('SYSTEM_DATE', &quot;yyyy-MM-dd'T'HH:mm:ss.SSSXXX&quot;)"/>
+
+<log level="custom">
+    <property name="message" value="[JamiiBackendErrorPolicy] Backend call failed"/>
+    <property name="api" expression="get-property('SYNAPSE_REST_API')"/>
+    <property name="requestId" expression="get-property('gwRequestId')"/>
+    <property name="errorCode" expression="get-property('ERROR_CODE')"/>
+    <property name="status" expression="get-property('gwErrorStatus')"/>
+</log>
+
+<payloadFactory media-type="json">
+    <format>{"error":"$1","code":$2,"requestId":"$3","timestamp":"$4"}</format>
+    <args>
+        <arg evaluator="xml" expression="get-property('gwErrorMessage')"/>
+        <arg evaluator="xml" expression="get-property('gwErrorStatus')"/>
+        <arg evaluator="xml" expression="get-property('gwRequestId')"/>
+        <arg evaluator="xml" expression="get-property('gwTimestamp')"/>
+    </args>
+</payloadFactory>
+
+<!-- the message still has the request's headers (Authorization etc.), don't send them back -->
+<property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+<header name="X-Correlation-ID" scope="transport" expression="get-property('gwRequestId')"/>
+<header name="Cache-Control" scope="transport" value="no-store"/>
+<header name="X-Content-Type-Options" scope="transport" value="nosniff"/>
+
+<property name="HTTP_SC" expression="get-property('gwErrorStatus')" scope="axis2"/>
+<property name="messageType" value="application/json" scope="axis2"/>
+<property name="ContentType" value="application/json" scope="axis2"/>
+<!-- GET requests are marked as having no body, so the error body would be dropped without this -->
+<property name="NO_ENTITY_BODY" action="remove" scope="axis2"/>
+<respond/>

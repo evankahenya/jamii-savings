@@ -1,0 +1,12 @@
+category: Mediation
+name: jamiiBackendErrorPolicy
+version: v1
+displayName: Jamii Backend Error Policy
+description: Returns the Jamii error format (error, code, requestId, timestamp) when the gateway cannot reach the backend (503) or it times out (504).
+applicableFlows:
+  - fault
+supportedGateways:
+  - Synapse
+supportedApiTypes:
+  - HTTP
+policyAttributes: []
