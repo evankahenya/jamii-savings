@@ -1,0 +1,12 @@
+category: Security
+name: jamiiHeaderSecurityPolicies
+version: v1
+displayName: Jamii Header Security Policies
+description: Adds browser security and no-cache headers to the response and removes the Server header. Based on helmet.js defaults.
+applicableFlows:
+  - response
+supportedGateways:
+  - Synapse
+supportedApiTypes:
+  - HTTP
+policyAttributes: []

@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<proxy xmlns="http://ws.apache.org/ns/synapse" name="CustomerProxy" startOnLoad="true" transports="http https">
+    <target>
+        <inSequence>
+            <!--Fault sequence logger knows which mediation is causing errors "artifactName"-->
+            <property name="artifactName" scope="default" type="STRING" value="CustomerProxy"/>
+            <sequence key="CorrelationIdSeq"/>
+
+            <!-- if proxy service is called directly : /services/CustomerProxy/{customerId} -->
+            <property name="customerId" scope="default" type="STRING"
+                      expression="substring-after(get-property('axis2', 'REST_URL_POSTFIX'), '/')"/>
+            <property name="REST_URL_POSTFIX" action="remove" scope="axis2"/>
+
+            <log category="INFO">
+                <message>[CustomerProxy] Request received | correlationId=${properties.synapse.correlationId}</message>
+            </log>
+
+            <!-- the proxy is reachable directly, validate customerID again -->
+            <filter source="get-property('customerId')" regex="^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$">
+                <then>
+                    <property name="customerIdMasked" scope="default" type="STRING"
+                              expression="${subString(properties.synapse.customerId, 0, 8) + '-****-****-****-********' + subString(properties.synapse.customerId, 32)}"/>
+                </then>
+                <else>
+                    <log category="WARN">
+                        <message>[CustomerProxy] Validation failed: customerId must be a UUID, responding HTTP 400 | correlationId=${properties.synapse.correlationId}</message>
+                    </log>
+                    <property name="HTTP_SC" value="400" scope="axis2"/>
+                    <payloadFactory media-type="json">
+                        <format>{"error":"Invalid customerId. Expected a UUID.","code":400,"requestId":"${properties.synapse.correlationId}","timestamp":"${properties.synapse.requestTimestamp}"}</format>
+                    </payloadFactory>
+                    <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+                    <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
+                    <respond/>
+                </else>
+            </filter>
+
+            <!--  drop every inbound header, then inject only what the backend needs -->
+            <property name="uri.var.customerId" scope="default" type="STRING" expression="get-property('customerId')"/>
+            <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+            <header name="Accept" scope="transport" value="application/json"/>
+            <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
+            <header name="X-Reqres-Env" scope="transport" value="prod"/>
+            <header name="x-api-key" scope="transport" expression="${configs.reqres_api_key}"/>
+
+            <log category="INFO">
+                <message>[CustomerProxy] Calling backend ReqresCustomerEP (timeout 10000 ms) | correlationId=${properties.synapse.correlationId} | customerId=${properties.synapse.customerIdMasked}</message>
+            </log>
+            <call>
+                <endpoint key="ReqresCustomerEP"/>
+            </call>
+            <property name="backendStatus" scope="default" type="STRING" expression="$axis2:HTTP_SC"/>
+            <log category="INFO">
+                <message>[CustomerProxy] Backend responded | correlationId=${properties.synapse.correlationId} | customerId=${properties.synapse.customerIdMasked} | backendStatus=${properties.synapse.backendStatus}</message>
+            </log>
+
+            <switch source="get-property('backendStatus')">
+                <case regex="200">
+                    <property name="HTTP_SC" value="200" scope="axis2"/>
+                </case>
+                <case regex="404">
+                    <property name="HTTP_SC" value="404" scope="axis2"/>
+                    <payloadFactory media-type="json">
+                        <format>{"error":"Customer not found","customerId":"${properties.synapse.customerId}","code":404,"requestId":"${properties.synapse.correlationId}","timestamp":"${properties.synapse.requestTimestamp}"}</format>
+                    </payloadFactory>
+                </case>
+                <default>
+                    <log category="ERROR">
+                        <message>[CustomerProxy] Unexpected backend status, responding HTTP 502 | correlationId=${properties.synapse.correlationId} | customerId=${properties.synapse.customerIdMasked} | backendStatus=${properties.synapse.backendStatus}</message>
+                    </log>
+                    <property name="HTTP_SC" value="502" scope="axis2"/>
+                    <payloadFactory media-type="json">
+                        <format>{"error":"Bad gateway. Unexpected response from upstream service","code":502,"requestId":"${properties.synapse.correlationId}","timestamp":"${properties.synapse.requestTimestamp}"}</format>
+                    </payloadFactory>
+                </default>
+            </switch>
+
+            <!-- Strip backend headers -->
+            <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+            <!--Add back the correlation id-->
+            <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
+            <log category="INFO">
+                <message>[CustomerProxy] Response sent | correlationId=${properties.synapse.correlationId} | customerId=${properties.synapse.customerIdMasked} | status=${properties.axis2.HTTP_SC}</message>
+            </log>
+            <respond/>
+        </inSequence>
+        <faultSequence>
+            <sequence key="GatewayFaultSeq"/>
+        </faultSequence>
+    </target>
+   
+</proxy>

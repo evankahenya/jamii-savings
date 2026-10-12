@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<artifacts>
+    <artifact name="resources_schemas_LoansEligibilityRequest_json" groupId="com.microintegrator.projects" version="1.0.0" type="registry/resource" serverRole="EnterpriseIntegrator">
+        <item>
+            <file>LoansEligibilityRequest.json</file>
+            <path>/_system/governance/mi-resources/schemas</path>
+            <mediaType>application/json</mediaType>
+            <properties></properties>
+        </item>
+    </artifact>
+    <artifact name="resources_schemas_LoansEligibilityResponse_xsd" groupId="com.microintegrator.projects" version="1.0.0" type="registry/resource" serverRole="EnterpriseIntegrator">
+        <item>
+            <file>LoansEligibilityResponse.xsd</file>
+            <path>/_system/governance/mi-resources/schemas</path>
+            <mediaType>application/xml</mediaType>
+            <properties></properties>
+        </item>
+    </artifact>
+</artifacts>

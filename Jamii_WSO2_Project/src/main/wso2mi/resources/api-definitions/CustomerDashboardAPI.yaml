@@ -1,0 +1,346 @@
+openapi: 3.0.1
+info:
+  title: CustomerDashboardAPI
+  description: >
+    Returns a customer's details together with the balance of each of their
+    accounts. The customer comes from the customer backend (CustomerProxy) and
+    each balance from AccountBalanceAPI.
+
+    If a balance lookup fails the response is still 200 and that account is
+    returned with status UNAVAILABLE. If the customer lookup fails the whole
+    request fails.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8290/customers
+  - url: https://localhost:8253/customers
+paths:
+  /{customerId}/dashboard:
+    get:
+      summary: Get customer dashboard
+      description: Returns the customer's details and the balance of each of their accounts.
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          description: Customer record UUID
+          schema:
+            type: string
+            format: uuid
+          example: e46f08a1-2750-46c6-a2eb-21e1b11fe57a
+        - name: X-Correlation-ID
+          in: header
+          required: false
+          description: |
+            **Leave empty when testing** or turn on CORS
+
+            Optional caller correlation ID (8-64 chars of A-Z a-z 0-9 . _ - :). Generated if missing or malformed.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Customer and account balances. Accounts whose balance could not be retrieved have status UNAVAILABLE.
+          headers:
+            X-Correlation-ID:
+              schema:
+                type: string
+                example: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+              examples:
+                allAccounts:
+                  summary: All balances retrieved
+                  value:
+                    customerId: e46f08a1-2750-46c6-a2eb-21e1b11fe57a
+                    customer:
+                      name: Felix Omondi Onyango
+                      email: felix.onyango@example.com
+                      phone: "+254732345641"
+                      address:
+                        city: Nairobi
+                        county: Nairobi
+                        street: Mombasa Road
+                        country: Kenya
+                        postal_code: "00506"
+                      kra_pin: A212345678X
+                      lastname: Onyango
+                      firstname: Felix
+                      date_of_birth: "1989-01-09"
+                      account_number:
+                        - "0051012695378"
+                      identification_number: "31278945"
+                      identification_document: ID
+                    accounts:
+                      - accountNumber: "0051012695378"
+                        status: ACTIVE
+                        balance:
+                          amount: 15250.75
+                          currency: KES
+                        requestId: 3f2b8c1e-9a4d-4b8e-9c21-5d7e8f9a0b1c
+                        timestamp: "2026-10-12T09:15:30.140+03:00"
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+                accountUnavailable:
+                  summary: One balance could not be retrieved (database error)
+                  value:
+                    customerId: e46f08a1-2750-46c6-a2eb-21e1b11fe57a
+                    customer:
+                      name: Felix Omondi Onyango
+                      email: felix.onyango@example.com
+                      phone: "+254732345641"
+                      address:
+                        city: Nairobi
+                        county: Nairobi
+                        street: Mombasa Road
+                        country: Kenya
+                        postal_code: "00506"
+                      kra_pin: A212345678X
+                      lastname: Onyango
+                      firstname: Felix
+                      date_of_birth: "1989-01-09"
+                      account_number:
+                        - "0051012695378"
+                        - "0051012695379"
+                      identification_number: "31278945"
+                      identification_document: ID
+                    accounts:
+                      - accountNumber: "0051012695378"
+                        status: ACTIVE
+                        balance:
+                          amount: 15250.75
+                          currency: KES
+                        requestId: 3f2b8c1e-9a4d-4b8e-9c21-5d7e8f9a0b1c
+                        timestamp: "2026-10-12T09:15:30.140+03:00"
+                      - accountNumber: "0051012695379"
+                        status: UNAVAILABLE
+                        error: Balance could not be retrieved for this account
+                        code: 500
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+        "400":
+          description: customerId is not a UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidCustomerId:
+                  summary: customerId is not a UUID
+                  value:
+                    error: Invalid customerId. Expected a UUID.
+                    code: 400
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+        "404":
+          description: No customer with this ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                customerNotFound:
+                  summary: Customer does not exist
+                  value:
+                    error: Customer not found
+                    code: 404
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+        "500":
+          description: Unexpected internal error in the dashboard API
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                internalError:
+                  summary: Internal error
+                  value:
+                    error: Internal server error
+                    code: 500
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+        "502":
+          description: The customer service returned an unexpected status or failed with an internal error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                badGateway:
+                  summary: Unexpected customer service response
+                  value:
+                    error: Bad gateway. Unexpected response from customer service
+                    code: 502
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+        "503":
+          description: The customer records backend could not be reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                customerServiceUnavailable:
+                  summary: Customer records backend unreachable
+                  value:
+                    error: Customer service is unavailable. Try again later
+                    code: 503
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+        "504":
+          description: The customer records backend did not respond within 10 seconds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                customerServiceTimeout:
+                  summary: Customer records backend timed out
+                  value:
+                    error: Customer service is unavailable. Try again later
+                    code: 504
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+components:
+  schemas:
+    Dashboard:
+      type: object
+      properties:
+        customerId:
+          type: string
+          example: e46f08a1-2750-46c6-a2eb-21e1b11fe57a
+        customer:
+          $ref: "#/components/schemas/Customer"
+        accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Account"
+        requestId:
+          type: string
+          description: Correlation ID of the request (also sent in the X-Correlation-ID header)
+          example: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-10-12T09:15:30.123+03:00"
+    Customer:
+      type: object
+      properties:
+        name:
+          type: string
+          example: Felix Omondi Onyango
+        email:
+          type: string
+          example: felix.onyango@example.com
+        phone:
+          type: string
+          example: "+254732345641"
+        address:
+          type: object
+          properties:
+            city:
+              type: string
+              example: Nairobi
+            county:
+              type: string
+              example: Nairobi
+            street:
+              type: string
+              example: Mombasa Road
+            country:
+              type: string
+              example: Kenya
+            postal_code:
+              type: string
+              example: "00506"
+        kra_pin:
+          type: string
+          example: A212345678X
+        lastname:
+          type: string
+          example: Onyango
+        firstname:
+          type: string
+          example: Felix
+        date_of_birth:
+          type: string
+          format: date
+          example: "1989-01-09"
+        account_number:
+          type: array
+          items:
+            type: string
+            example: "0051012695378"
+        identification_number:
+          type: string
+          example: "31278945"
+        identification_document:
+          type: string
+          example: ID
+    Account:
+      type: object
+      properties:
+        accountNumber:
+          type: string
+          example: "0051012695378"
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - DORMANT
+            - CLOSED
+            - UNAVAILABLE
+          example: ACTIVE
+        balance:
+          type: object
+          description: Not present when status is UNAVAILABLE
+          properties:
+            amount:
+              type: number
+              example: 15250.75
+            currency:
+              type: string
+              example: KES
+        error:
+          type: string
+          description: Only present when status is UNAVAILABLE
+          example: Balance could not be retrieved for this account
+        code:
+          type: integer
+          description: >
+            HTTP status from AccountBalanceAPI, only present when status is
+            UNAVAILABLE (400 account number in the customer record is not 13
+            digits, 404 account not found, 500 database error, 503 database
+            unreachable or did not respond within 5 seconds)
+          example: 500
+        requestId:
+          type: string
+          description: AccountBalanceAPI request ID
+          example: 3f2b8c1e-9a4d-4b8e-9c21-5d7e8f9a0b1c
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-10-12T09:15:30.140+03:00"
+    Error:
+      type: object
+      required:
+        - error
+        - code
+        - requestId
+        - timestamp
+      properties:
+        error:
+          type: string
+          example: Invalid customerId. Expected a UUID.
+        code:
+          type: integer
+          example: 400
+        requestId:
+          type: string
+          description: Correlation ID of the request (also sent in the X-Correlation-ID header)
+          example: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-10-12T09:15:30.123+03:00"

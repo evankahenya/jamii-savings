@@ -1,0 +1,199 @@
+openapi: 3.0.1
+info:
+  title: AccountBalanceAPI
+  description: >
+    Returns the current balance of an account from the Jamii Savings database
+    (AccountDataService). Repeat requests for the same account within 60
+    seconds are served from cache.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8290/accounts
+  - url: https://localhost:8253/accounts
+paths:
+  /{accountNumber}/balance:
+    get:
+      summary: Get account balance
+      description: Returns the current balance of an account. Repeat requests for the same account within 60 seconds are served from cache.
+      parameters:
+        - name: accountNumber
+          in: path
+          required: true
+          description: 13-digit account number
+          schema:
+            type: string
+          example: "0051012695378"
+      responses:
+        "200":
+          description: Account balance
+          headers:
+            X-Cache-Status:
+              description: MISS when fetched from the database, HIT when served from cache
+              schema:
+                type: string
+                enum:
+                  - MISS
+                  - HIT
+                example: MISS
+            X-Cache-Age:
+              description: Seconds since the cached response was fetched from the database (0 on MISS)
+              schema:
+                type: integer
+                example: 0
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountBalance"
+              examples:
+                active:
+                  summary: Active account
+                  value:
+                    accountNumber: "0051012695378"
+                    status: ACTIVE
+                    balance:
+                      amount: 15250.75
+                      currency: KES
+                    requestId: 3f2b8c1e-9a4d-4e7b-b1c2-5d6e7f8a9b0c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+                dormant:
+                  summary: Dormant account
+                  value:
+                    accountNumber: "9876543210987"
+                    status: DORMANT
+                    balance:
+                      amount: 0
+                      currency: KES
+                    requestId: 7a1d2e3f-4b5c-4d6e-8f90-a1b2c3d4e5f6
+                    timestamp: "2026-10-12T09:16:02.456+03:00"
+        "400":
+          description: Account number is not exactly 13 digits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidAccountNumber:
+                  summary: Account number is not 13 digits
+                  value:
+                    error: Invalid account number. Expected exactly 13 digits.
+                    code: 400
+                    requestId: b4c5d6e7-f809-4a1b-9c2d-3e4f5a6b7c8d
+                    timestamp: "2026-10-12T09:17:11.789+03:00"
+        "404":
+          description: No account with this number in the database
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountNotFoundError"
+              examples:
+                accountNotFound:
+                  summary: Account does not exist
+                  value:
+                    error: Account not found
+                    accountNumber: "1234567890000"
+                    code: 404
+                    requestId: c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f
+                    timestamp: "2026-10-12T09:18:45.012+03:00"
+        "500":
+          description: The database query failed (AccountDataService returned an error)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                databaseError:
+                  summary: Database returned an error
+                  value:
+                    error: Internal server error. Database unavailable
+                    code: 500
+                    requestId: d9e8f7a6-b5c4-4d3e-9f2a-1b0c9d8e7f6a
+                    timestamp: "2026-10-12T09:19:20.345+03:00"
+        "503":
+          description: The database did not respond within 5 seconds, or an unexpected error occurred while processing the request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                serviceUnavailable:
+                  summary: Database unreachable or timed out
+                  value:
+                    error: Service unavailable
+                    code: 503
+                    requestId: e5f6a7b8-c9d0-4e1f-a2b3-c4d5e6f7a8b9
+                    timestamp: "2026-10-12T09:20:05.678+03:00"
+components:
+  schemas:
+    AccountBalance:
+      type: object
+      required:
+        - accountNumber
+        - status
+        - balance
+        - requestId
+        - timestamp
+      properties:
+        accountNumber:
+          type: string
+          example: "0051012695378"
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - DORMANT
+            - CLOSED
+          example: ACTIVE
+        balance:
+          $ref: "#/components/schemas/Money"
+        requestId:
+          type: string
+          description: ID generated by this API for the request
+          example: 3f2b8c1e-9a4d-4e7b-b1c2-5d6e7f8a9b0c
+        timestamp:
+          type: string
+          format: date-time
+          description: Time the request was received
+          example: "2026-10-12T09:15:30.123+03:00"
+    Money:
+      type: object
+      required:
+        - amount
+        - currency
+      properties:
+        amount:
+          type: number
+          example: 15250.75
+        currency:
+          type: string
+          example: KES
+    Error:
+      type: object
+      required:
+        - error
+        - code
+        - requestId
+        - timestamp
+      properties:
+        error:
+          type: string
+          example: Invalid account number. Expected exactly 13 digits.
+        code:
+          type: integer
+          example: 400
+        requestId:
+          type: string
+          description: ID generated by this API for the request
+          example: b4c5d6e7-f809-4a1b-9c2d-3e4f5a6b7c8d
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-10-12T09:17:11.789+03:00"
+    AccountNotFoundError:
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required:
+            - accountNumber
+          properties:
+            accountNumber:
+              type: string
+              example: "1234567890000"

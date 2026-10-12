@@ -1,0 +1,379 @@
+openapi: 3.0.1
+info:
+  title: LoansEligibilityAPI
+  description: >
+    Checks whether a customer is eligible for a loan. Accepts a JSON request,
+    validates it against resources/schemas/LoansEligibilityRequest.json,
+    converts it to SOAP and calls the CheckLoanEligibility service. The SOAP
+    response is checked against resources/schemas/LoansEligibilityResponse.xsd
+    and returned as JSON.
+
+    The SOAP requestHeader (requestId, correlationId, requestTimestamp,
+    sourceSystem) is filled in by the gateway.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8290/loans
+  - url: https://localhost:8253/loans
+paths:
+  /eligibility:
+    post:
+      summary: Check loan eligibility
+      description: Returns the eligibility decision for the applicant and loan request.
+      parameters:
+        - name: X-Correlation-ID
+          in: header
+          required: false
+          description: |
+            **Leave empty when testing** or turn on CORS
+
+            Optional caller correlation ID (8-64 chars of A-Z a-z 0-9 . _ - :). Generated if missing or malformed.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EligibilityRequest"
+      responses:
+        "200":
+          description: Eligibility decision
+          headers:
+            X-Correlation-ID:
+              schema:
+                type: string
+                example: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EligibilityResponse"
+              examples:
+                eligible:
+                  summary: Applicant is eligible
+                  value:
+                    status: ELIGIBLE
+                    riskBand: LOW
+                    requestedAmount:
+                      amount: 150000
+                      currency: KES
+                    indicativeAmount:
+                      amount: 150000
+                      currency: KES
+                    tenorMonths: 12
+                    instalment:
+                      amount: 14025.5
+                      currency: KES
+                    debtToIncomeRatio: 0.32
+                    reasons: Income and repayment history meet the product requirements
+                    nextSteps: Proceed to full loan application
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+        "400":
+          description: Body is not valid JSON, or a required field is missing or has the wrong type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidFields:
+                  summary: Field missing or wrong type
+                  value:
+                    error: Invalid request. One or more fields are missing or invalid
+                    code: 400
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+                invalidJson:
+                  summary: Body is not valid JSON
+                  value:
+                    error: Invalid request. Body is not valid JSON
+                    code: 400
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+        "415":
+          description: Content-Type is not application/json
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                unsupportedMediaType:
+                  summary: Request is not JSON
+                  value:
+                    error: Unsupported body type. Request must be application/json
+                    code: 415
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+        "500":
+          description: Unexpected internal error while processing the request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                internalError:
+                  summary: Mediation error
+                  value:
+                    error: Internal server error
+                    code: 500
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+        "502":
+          description: The loan service returned a non-200 status (including SOAP faults), or its response failed the schema check
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                badGateway:
+                  summary: Unexpected loan service response
+                  value:
+                    error: Bad gateway. Unexpected response from loan service
+                    code: 502
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+        "503":
+          description: The loan service could not be reached, or is temporarily suspended after repeated connection failures
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                serviceUnavailable:
+                  summary: Loan service unreachable
+                  value:
+                    error: Service unavailable. Upstream service is unreachable
+                    code: 503
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+        "504":
+          description: The loan service did not respond within 10 seconds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                gatewayTimeout:
+                  summary: Loan service timed out
+                  value:
+                    error: Gateway timeout. Upstream service did not respond in time
+                    code: 504
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+components:
+  schemas:
+    Money:
+      type: object
+      required:
+        - amount
+        - currency
+      properties:
+        amount:
+          type: number
+          example: 150000
+        currency:
+          type: string
+          example: KES
+    EligibilityRequest:
+      type: object
+      required:
+        - channelId
+        - applicant
+        - employmentDetails
+        - loanRequest
+        - consentToCreditAssessment
+      properties:
+        channelId:
+          type: string
+          example: MOBILE
+        applicant:
+          type: object
+          required:
+            - customerReference
+            - firstName
+            - lastName
+            - nationalIdLastFour
+            - kraPin
+            - dateOfBirth
+            - mobileNumber
+            - county
+            - residencyStatus
+          properties:
+            customerReference:
+              type: string
+              example: CUST-000123
+            firstName:
+              type: string
+              example: Felix
+            lastName:
+              type: string
+              example: Onyango
+            nationalIdLastFour:
+              type: string
+              example: "8945"
+            kraPin:
+              type: string
+              example: A212345678X
+            dateOfBirth:
+              type: string
+              format: date
+              example: "1989-01-09"
+            mobileNumber:
+              type: string
+              example: "+254732345641"
+            emailAddress:
+              type: string
+              description: Optional. Sent to the backend as an empty element when omitted.
+              example: felix.onyango@example.com
+            county:
+              type: string
+              example: Nairobi
+            residencyStatus:
+              type: string
+              enum:
+                - RESIDENT
+                - NON_RESIDENT
+              example: RESIDENT
+        employmentDetails:
+          type: object
+          required:
+            - employmentType
+            - employerOrBusinessName
+            - monthsWithEmployerOrBusiness
+            - monthlyGrossIncome
+            - monthlyNetIncome
+            - incomeVerified
+          properties:
+            employmentType:
+              type: string
+              enum:
+                - SALARIED
+                - SELF_EMPLOYED
+                - CASUAL
+                - UNEMPLOYED
+              example: SALARIED
+            employerOrBusinessName:
+              type: string
+              example: Acme Ltd
+            monthsWithEmployerOrBusiness:
+              type: integer
+              example: 36
+            monthlyGrossIncome:
+              $ref: "#/components/schemas/Money"
+            monthlyNetIncome:
+              $ref: "#/components/schemas/Money"
+            otherMonthlyIncome:
+              $ref: "#/components/schemas/Money"
+            incomeVerified:
+              type: boolean
+              example: true
+        loanRequest:
+          type: object
+          required:
+            - productCode
+            - requestedAmount
+            - requestedTenorMonths
+            - purpose
+            - repaymentMethod
+            - existingObligations
+          properties:
+            productCode:
+              type: string
+              example: PL-STD-12
+            requestedAmount:
+              $ref: "#/components/schemas/Money"
+            requestedTenorMonths:
+              type: integer
+              example: 12
+            purpose:
+              type: string
+              example: School fees
+            repaymentMethod:
+              type: string
+              enum:
+                - MPESA
+                - BANK_TRANSFER
+                - CHECK_OFF
+                - STANDING_ORDER
+              example: MPESA
+            existingObligations:
+              type: object
+              required:
+                - monthlyLoanRepayments
+                - monthlyMobileLoanRepayments
+                - monthlyOtherDebtPayments
+                - hasOverdueFacility
+                - daysPastDue
+              properties:
+                monthlyLoanRepayments:
+                  $ref: "#/components/schemas/Money"
+                monthlyMobileLoanRepayments:
+                  $ref: "#/components/schemas/Money"
+                monthlyOtherDebtPayments:
+                  $ref: "#/components/schemas/Money"
+                hasOverdueFacility:
+                  type: boolean
+                  example: false
+                daysPastDue:
+                  type: integer
+                  example: 0
+        consentToCreditAssessment:
+          type: boolean
+          description: Customer's consent to the credit assessment (Kenya DPA 2019).
+          example: true
+    EligibilityResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ELIGIBLE
+        riskBand:
+          type: string
+          example: LOW
+        requestedAmount:
+          $ref: "#/components/schemas/Money"
+        indicativeAmount:
+          $ref: "#/components/schemas/Money"
+        tenorMonths:
+          type: integer
+          example: 12
+        instalment:
+          $ref: "#/components/schemas/Money"
+        debtToIncomeRatio:
+          type: number
+          example: 0.32
+        reasons:
+          type: string
+          example: Income and repayment history meet the product requirements
+        nextSteps:
+          type: string
+          example: Proceed to full loan application
+        requestId:
+          type: string
+          description: Correlation ID of the request (also sent in the X-Correlation-ID header)
+          example: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-10-12T09:15:30.123+03:00"
+    Error:
+      type: object
+      required:
+        - error
+        - code
+        - requestId
+        - timestamp
+      properties:
+        error:
+          type: string
+          example: Invalid request. One or more fields are missing or invalid
+        code:
+          type: integer
+          example: 400
+        requestId:
+          type: string
+          description: Correlation ID of the request (also sent in the X-Correlation-ID header)
+          example: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-10-12T09:15:30.123+03:00"

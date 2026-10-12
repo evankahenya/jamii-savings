@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<api xmlns="http://ws.apache.org/ns/synapse"
+     name="AccountBalanceAPI"
+     context="/accounts">
+
+    <resource methods="GET" uri-template="/{accountNumber}/balance">
+        <inSequence>
+            <property name="artifactName" scope="default" type="STRING" value="AccountBalanceAPI"/>
+            <!-- Request ID (GUID) and request timestamp (ISO 8601), captured on arrival -->
+            <script language="js"><![CDATA[mc.setProperty("requestId", java.util.UUID.randomUUID().toString());]]></script>
+            <property name="requestTimestamp" scope="default" type="STRING"
+                      expression="get-property('SYSTEM_DATE', &quot;yyyy-MM-dd'T'HH:mm:ss.SSSXXX&quot;)"/>
+
+            <!-- Capture path param -->
+            <variable name="accountNumber" type="STRING"
+                      expression="$ctx:uri.var.accountNumber"/>
+
+            <log category="INFO">
+                <message>[AccountBalanceAPI] Request received | requestId=${properties.synapse.requestId} | timestamp=${properties.synapse.requestTimestamp}</message>
+            </log>
+
+            <!-- Validate account number length  -->
+            <filter source="$ctx:uri.var.accountNumber" regex="^[0-9]{13}$">
+                <then>
+                    <!-- Masked form for logs: last 4 digits only -->
+                    <variable name="accountNumberMasked" type="STRING"
+                              expression="${'*********' + subString(vars.accountNumber, 9)}"/>
+                    <log category="DEBUG">
+                        <message>[AccountBalanceAPI] Validation passed | requestId=${properties.synapse.requestId} | accountNumber=${vars.accountNumberMasked}</message>
+                    </log>
+                </then>
+                <else>
+                    <log category="ERROR">
+                        <message>[AccountBalanceAPI] Validation failed: account number must be exactly 13 digits | requestId=${properties.synapse.requestId} | responding HTTP 400</message>
+                    </log>
+                    <property name="HTTP_SC" value="400" scope="axis2"/>
+                    <payloadFactory media-type="json">
+                        <format>{"error":"Invalid account number. Expected exactly 13 digits.","code":400,"requestId":"${properties.synapse.requestId}","timestamp":"${properties.synapse.requestTimestamp}"}</format>
+                    </payloadFactory>
+                    <respond/>
+                </else>
+            </filter>
+
+            <!-- Cache mediator: same account requeste  within 1 minute is served from cache -->
+            <cache collector="false" timeout="60" maxMessageSize="10000">
+                <onCacheHit>
+                    
+                    <property name="cachedAt" scope="default" type="STRING" expression="${payload.timestamp}"/>
+                    <script language="js"><![CDATA[
+                        var cachedAt = java.time.OffsetDateTime.parse(String(mc.getProperty("cachedAt")));
+                        var age = java.time.Duration.between(cachedAt, java.time.OffsetDateTime.now()).getSeconds();
+                        mc.setProperty("cacheAge", String(age));
+                    ]]></script>
+                    <payloadFactory media-type="json">
+                        <format>{
+                                        "accountNumber": "${payload.accountNumber}",
+                                        "status": "${payload.status}",
+                                        "balance": {
+                                            "amount": ${payload.balance.amount},
+                                            "currency": "${payload.balance.currency}"
+                                        },
+                                        "requestId": "${properties.synapse.requestId}",
+                                        "timestamp": "${properties.synapse.requestTimestamp}"
+                                                }
+
+
+</format>
+                    </payloadFactory>
+                    <header name="cacheKey" scope="transport" action="remove"/>
+                    <header name="X-Cache-Status" scope="transport" value="HIT"/>
+                    <header name="X-Cache-Age" scope="transport" expression="${properties.synapse.cacheAge}"/>
+                    <property name="HTTP_SC" value="200" scope="axis2"/>
+                    <log category="INFO">
+                        <message>[AccountBalanceAPI] Cache HIT, responding HTTP 200 from cache | requestId=${properties.synapse.requestId} | accountNumber=${vars.accountNumberMasked} | cacheAgeSeconds=${properties.synapse.cacheAge}</message>
+                    </log>
+                    <respond/>
+                </onCacheHit>
+                <protocol type="HTTP">
+                    <methods>GET</methods>
+                    <headersToExcludeInHash>*</headersToExcludeInHash>
+                    <headersToIncludeInHash/>
+                    <responseCodes>200</responseCodes>
+                    <enableCacheControl>false</enableCacheControl>
+                    <includeAgeHeader>false</includeAgeHeader>
+                    <hashGenerator>org.wso2.carbon.mediator.cache.digest.HttpRequestHashGenerator</hashGenerator>
+                </protocol>
+                <implementation maxSize="1000"/>
+            </cache>
+
+            <!-- If the request is not in cache look up the account from db -->
+            <log category="INFO">
+                <message>[AccountBalanceAPI] Cache MISS, querying AccountDataService | requestId=${properties.synapse.requestId} | accountNumber=${vars.accountNumberMasked}</message>
+            </log>
+            <header name="Accept" scope="transport" value="application/json"/>
+            <call>
+                <endpoint key="AccountDataServiceEP"/>
+            </call>
+            <log category="INFO">
+                <message>[AccountBalanceAPI] AccountDataService responded | requestId=${properties.synapse.requestId} | accountNumber=${vars.accountNumberMasked} | backendStatus=${properties.axis2.HTTP_SC}</message>
+            </log>
+
+            <!-- Data service failed -->
+            <filter xpath="${properties.axis2.HTTP_SC != 200}">
+                <then>
+                    <log category="ERROR">
+                        <message>[AccountBalanceAPI] AccountDataService returned non-200 status, responding HTTP 500 | requestId=${properties.synapse.requestId} | accountNumber=${vars.accountNumberMasked} | backendStatus=${properties.axis2.HTTP_SC}</message>
+                    </log>
+                    <property name="HTTP_SC" value="500" scope="axis2"/>
+                    <payloadFactory media-type="json">
+                        <format>{"error":"Internal server error. Database unavailable","code":500,"requestId":"${properties.synapse.requestId}","timestamp":"${properties.synapse.requestTimestamp}"}</format>
+                    </payloadFactory>
+                    <respond/>
+                </then>
+                <else/>
+            </filter>
+
+            <!-- 404 if no row found -->
+            <filter xpath="${not(exists(payload.account.accountNumber))}">
+                <then>
+                    <log category="WARN">
+                        <message>[AccountBalanceAPI] Account not found in database, responding HTTP 404 | requestId=${properties.synapse.requestId} | accountNumber=${vars.accountNumberMasked}</message>
+                    </log>
+                    <property name="HTTP_SC" value="404" scope="axis2"/>
+                    <payloadFactory media-type="json">
+                        <format>{"error":"Account not found","accountNumber":"${vars.accountNumber}","code":404,"requestId":"${properties.synapse.requestId}","timestamp":"${properties.synapse.requestTimestamp}"}</format>
+                    </payloadFactory>
+                    <respond/>
+                </then>
+                <else/>
+            </filter>
+
+            <!-- Build success response -->
+            <payloadFactory media-type="json">
+                <format>{
+                            "accountNumber": "${payload.account.accountNumber}",
+                            "status": "${payload.account.status}",
+                            "balance": {
+                                "amount": ${float(payload.account.balance)},
+                                "currency": "${payload.account.currency}"
+                            },
+                            "requestId": "${properties.synapse.requestId}",
+                            "timestamp": "${properties.synapse.requestTimestamp}"
+}</format>
+            </payloadFactory>
+            <property name="HTTP_SC" value="200" scope="axis2"/>
+
+            <!-- Cache collector to store the 200 response  -->
+            <property name="RESPONSE" value="true" scope="default" type="STRING"/>
+            <cache collector="true"/>
+            <header name="cacheKey" scope="transport" action="remove"/>
+            <header name="X-Cache-Status" scope="transport" value="MISS"/>
+            <header name="X-Cache-Age" scope="transport" value="0"/>
+            <log category="INFO">
+                <message>[AccountBalanceAPI] Account found, responding HTTP 200 (response cached) | requestId=${properties.synapse.requestId} | accountNumber=${vars.accountNumberMasked}</message>
+            </log>
+            <respond/>
+        </inSequence>
+
+        <faultSequence>
+            <log category="ERROR">
+                <message>[AccountBalanceAPI] Fault while processing request, responding HTTP 503 | requestId=${properties.synapse.requestId} | accountNumber=${vars.accountNumberMasked} | errorCode=${properties.synapse.ERROR_CODE} | errorMessage=${properties.synapse.ERROR_MESSAGE} | errorDetail=${properties.synapse.ERROR_DETAIL}</message>
+            </log>
+            <property name="HTTP_SC" value="503" scope="axis2"/>
+            <payloadFactory media-type="json">
+                <format>{"error":"Service unavailable","code":503,"requestId":"${properties.synapse.requestId}","timestamp":"${properties.synapse.requestTimestamp}"}</format>
+            </payloadFactory>
+            <respond/>
+        </faultSequence>
+    </resource>
+</api>

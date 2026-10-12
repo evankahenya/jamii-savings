@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "LoansEligibilityRequest",
+  "type": "object",
+  "required": ["channelId", "applicant", "employmentDetails", "loanRequest", "consentToCreditAssessment"],
+  "properties": {
+    "channelId": { "type": "string" },
+    "applicant": {
+      "type": "object",
+      "required": ["customerReference", "firstName", "lastName", "nationalIdLastFour", "kraPin", "dateOfBirth",
+                   "mobileNumber", "county", "residencyStatus"],
+      "properties": {
+        "customerReference": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "nationalIdLastFour": { "type": "string" },
+        "kraPin": { "type": "string" },
+        "dateOfBirth": { "type": "string" },
+        "mobileNumber": { "type": "string" },
+        "emailAddress": { "type": "string" },
+        "county": { "type": "string" },
+        "residencyStatus": { "type": "string", "enum": ["RESIDENT", "NON_RESIDENT"] }
+      }
+    },
+    "employmentDetails": {
+      "type": "object",
+      "required": ["employmentType", "employerOrBusinessName", "monthsWithEmployerOrBusiness", "monthlyGrossIncome",
+                   "monthlyNetIncome", "incomeVerified"],
+      "properties": {
+        "employmentType": { "type": "string", "enum": ["SALARIED", "SELF_EMPLOYED", "CASUAL", "UNEMPLOYED"] },
+        "employerOrBusinessName": { "type": "string" },
+        "monthsWithEmployerOrBusiness": { "type": "integer" },
+        "monthlyGrossIncome": { "type": "object", "required": ["amount", "currency"] },
+        "monthlyNetIncome": { "type": "object", "required": ["amount", "currency"] },
+        "otherMonthlyIncome": { "type": "object" },
+        "incomeVerified": { "type": "boolean" }
+      }
+    },
+    "loanRequest": {
+      "type": "object",
+      "required": ["productCode", "requestedAmount", "requestedTenorMonths", "purpose", "repaymentMethod",
+                   "existingObligations"],
+      "properties": {
+        "productCode": { "type": "string" },
+        "requestedAmount": { "type": "object", "required": ["amount", "currency"] },
+        "requestedTenorMonths": { "type": "integer" },
+        "purpose": { "type": "string" },
+        "repaymentMethod": { "type": "string", "enum": ["MPESA", "BANK_TRANSFER", "CHECK_OFF", "STANDING_ORDER"] },
+        "existingObligations": {
+          "type": "object",
+          "required": ["monthlyLoanRepayments", "monthlyMobileLoanRepayments", "monthlyOtherDebtPayments",
+                       "hasOverdueFacility", "daysPastDue"]
+        }
+      }
+    },
+    "consentToCreditAssessment": { "type": "boolean" }
+  }
+}

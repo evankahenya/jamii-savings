@@ -1,0 +1,27 @@
+<data name="AccountDataService" transports="http https">
+    <description>Jamii Savings account lookups (SQLite)</description>
+
+  
+    <config id="JamiiDB">
+        <property name="carbon_datasource_name">JamiiDB</property>
+    </config>
+
+    <query id="GetAccountBalance" useConfig="JamiiDB">
+        <sql>SELECT account_number, status, balance, currency FROM account WHERE account_number = ?</sql>
+        <param name="accountNumber" sqlType="STRING" type="IN" ordinal="1"/>
+        <result outputType="json">{
+  "account": {
+    "accountNumber": "$account_number",
+    "status": "$status",
+    "balance": "$balance",
+    "currency": "$currency"
+  }
+}</result>
+    </query>
+
+    <resource method="GET" path="accounts/{accountNumber}">
+        <call-query href="GetAccountBalance">
+            <with-param name="accountNumber" query-param="accountNumber"/>
+        </call-query>
+    </resource>
+</data>

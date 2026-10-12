@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:jam="http://jamii.loans.app/schema"
+           targetNamespace="http://jamii.loans.app/schema"
+           elementFormDefault="unqualified">
+
+    <xs:complexType name="Money">
+        <xs:simpleContent>
+            <xs:extension base="xs:decimal">
+                <xs:attribute name="currency" type="xs:string" use="required"/>
+            </xs:extension>
+        </xs:simpleContent>
+    </xs:complexType>
+
+    <xs:element name="CheckLoanEligibilityResponse">
+        <xs:complexType>
+            <xs:all>
+                <xs:element name="Status" type="xs:string"/>
+                <xs:element name="RiskBand" type="xs:string" minOccurs="0"/>
+                <xs:element name="RequestedAmount" type="jam:Money"/>
+                <xs:element name="IndicativeAmount" type="jam:Money"/>
+                <xs:element name="TenorMonths" type="xs:int"/>
+                <xs:element name="Instalment" type="jam:Money"/>
+                <xs:element name="DebtToIncomeRatio" type="xs:decimal"/>
+                <xs:element name="Reasons" type="xs:string" minOccurs="0"/>
+                <xs:element name="NextSteps" type="xs:string" minOccurs="0"/>
+            </xs:all>
+        </xs:complexType>
+    </xs:element>
+</xs:schema>

@@ -1,0 +1,13 @@
+<!-- Custom APIM policy: Jamii Header Security Policies (response flow).
+     Browser security headers (based on helmet.js defaults) for APIs that return customer, account and loan data -->
+<header name="Cache-Control" scope="transport" action="set" value="no-store"/>
+<header name="Pragma" scope="transport" action="set" value="no-cache"/>
+<header name="X-Content-Type-Options" scope="transport" action="set" value="nosniff"/>
+<header name="Content-Security-Policy" scope="transport" action="set" value="default-src 'none'; frame-ancestors 'none'"/>
+<header name="X-Frame-Options" scope="transport" action="set" value="DENY"/>
+<header name="Referrer-Policy" scope="transport" action="set" value="no-referrer"/>
+<header name="Cross-Origin-Opener-Policy" scope="transport" action="set" value="same-origin"/>
+<header name="Cross-Origin-Resource-Policy" scope="transport" action="set" value="same-origin"/>
+<header name="X-Permitted-Cross-Domain-Policies" scope="transport" action="set" value="none"/>
+<!-- don't tell clients which server we run -->
+<header name="Server" scope="transport" action="remove"/>

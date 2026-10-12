@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<endpoint xmlns="http://ws.apache.org/ns/synapse" name="LoanEligibilitySoapEP">
+    <!-- SOAP 1.1 loan eligibility backend. SOAPAction is set by LoansEligibilityAPI -->
+    <address uri="https://sm8e2e62d0c0ba.free.beeceptor.com/" format="soap11">
+        <timeout>
+            <duration>10000</duration>
+            <responseAction>fault</responseAction>
+        </timeout>
+        <markForSuspension>
+            <errorCodes>101504,101505,101508</errorCodes>
+            <retriesBeforeSuspension>2</retriesBeforeSuspension>
+            <retryDelay>0</retryDelay>
+        </markForSuspension>
+        <suspendOnFailure>
+            <errorCodes>101503</errorCodes>
+            <initialDuration>10000</initialDuration>
+            <progressionFactor>2.0</progressionFactor>
+            <maximumDuration>60000</maximumDuration>
+        </suspendOnFailure>
+    </address>
+</endpoint>

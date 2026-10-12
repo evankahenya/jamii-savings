@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sequence xmlns="http://ws.apache.org/ns/synapse" name="CorrelationIdSeq" trace="disable">
+    <!-- Reuse the caller's X-Correlation-ID from transport headers $trp if well-formed, otherwise generate  -->
+    <filter source="$trp:X-Correlation-ID" regex="^[A-Za-z0-9._:\-]{8,64}$">
+        <then>
+            <property name="correlationId" scope="default" type="STRING" expression="$trp:X-Correlation-ID"/>
+            <property name="correlationIdSource" scope="default" type="STRING" value="caller"/>
+        </then>
+        <else>
+            <!-- MessageID is a per-message urn:uuid. Unlike a script mediator, this does not parse the body,
+                 so a malformed request still gets a correlation ID before any fault -->
+            <property name="correlationId" scope="default" type="STRING"
+                      expression="substring-after(get-property('MessageID'), 'urn:uuid:')"/>
+            <property name="correlationIdSource" scope="default" type="STRING" value="generated"/>
+        </else>
+    </filter>
+    <property name="requestTimestamp" scope="default" type="STRING"
+              expression="get-property('SYSTEM_DATE', &quot;yyyy-MM-dd'T'HH:mm:ss.SSSXXX&quot;)"/>
+</sequence>

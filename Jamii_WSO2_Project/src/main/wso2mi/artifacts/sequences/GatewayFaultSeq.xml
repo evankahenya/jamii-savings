@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sequence xmlns="http://ws.apache.org/ns/synapse" name="GatewayFaultSeq" trace="disable">
+    <!-- Maps transport/endpoint faults to 504 (timeout), 503 (unreachable/suspended) or 500 (mediation error) -->
+    <switch source="get-property('ERROR_CODE')">
+        <case regex="101504|101508">
+            <property name="HTTP_SC" value="504" scope="axis2"/>
+            <property name="faultMessage" scope="default" type="STRING" value="Gateway timeout. Upstream service did not respond in time"/>
+        </case>
+        <case regex="1015[0-9][0-9]|30300[0-9]">
+            <property name="HTTP_SC" value="503" scope="axis2"/>
+            <property name="faultMessage" scope="default" type="STRING" value="Service unavailable. Upstream service is unreachable"/>
+        </case>
+        <default>
+            <property name="HTTP_SC" value="500" scope="axis2"/>
+            <property name="faultMessage" scope="default" type="STRING" value="Internal server error"/>
+        </default>
+    </switch>
+    <log category="ERROR">
+        <message>[${properties.synapse.artifactName}] Fault while processing request, responding HTTP ${properties.axis2.HTTP_SC} | correlationId=${properties.synapse.correlationId} | errorCode=${properties.synapse.ERROR_CODE} | errorMessage=${properties.synapse.ERROR_MESSAGE}</message>
+    </log>
+    <payloadFactory media-type="json">
+        <format>{"error":"${properties.synapse.faultMessage}","code":${properties.axis2.HTTP_SC},"requestId":"${properties.synapse.correlationId}","timestamp":"${properties.synapse.requestTimestamp}"}</format>
+    </payloadFactory>
+    <!-- The fault may occur after a SOAP/XML conversion, so always respond as JSON -->
+    <property name="messageType" value="application/json" scope="axis2"/>
+    <property name="ContentType" value="application/json" scope="axis2"/>
+    <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+    <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
+    <respond/>
+</sequence>

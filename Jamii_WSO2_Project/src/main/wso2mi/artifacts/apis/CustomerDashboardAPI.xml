@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<api xmlns="http://ws.apache.org/ns/synapse" name="CustomerDashboardAPI" context="/customers">
+
+    <resource methods="GET" uri-template="/{customerId}/dashboard">
+        <inSequence>
+            <property name="artifactName" scope="default" type="STRING" value="CustomerDashboardAPI"/>
+            <sequence key="CorrelationIdSeq"/>
+            <variable name="customerId" type="STRING" expression="$ctx:uri.var.customerId"/>
+
+            <log category="INFO">
+                <message>[CustomerDashboardAPI] Request received | correlationId=${properties.synapse.correlationId}</message>
+            </log>
+
+            <!-- same check as GetCustomerByID: customerId must be a UUID -->
+            <filter source="$ctx:uri.var.customerId" regex="^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$">
+                <then>
+                    <variable name="customerIdMasked" type="STRING"
+                              expression="${subString(vars.customerId, 0, 8) + '-****-****-****-********' + subString(vars.customerId, 32)}"/>
+                </then>
+                <else>
+                    <log category="WARN">
+                        <message>[CustomerDashboardAPI] Validation failed: customerId must be a UUID | correlationId=${properties.synapse.correlationId}</message>
+                    </log>
+                    <property name="errorStatus" value="400"/>
+                    <property name="errorMessage" value="Invalid customerId. Expected a UUID."/>
+                    <sequence key="ErrorResponseSeq"/>
+                </else>
+            </filter>
+
+            <!-- 1. get the customer. uri.var.customerId comes from the path so CustomerProxyEP picks it up -->
+            <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+            <header name="Accept" scope="transport" value="application/json"/>
+            <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
+
+            <log category="INFO">
+                <message>[CustomerDashboardAPI] Getting customer | correlationId=${properties.synapse.correlationId} | customerId=${vars.customerIdMasked}</message>
+            </log>
+            <call>
+                <endpoint key="CustomerProxyEP"/>
+            </call>
+            <property name="customerStatus" expression="$axis2:HTTP_SC"/>
+            <log category="INFO">
+                <message>[CustomerDashboardAPI] Customer lookup responded | correlationId=${properties.synapse.correlationId} | customerId=${vars.customerIdMasked} | status=${properties.synapse.customerStatus}</message>
+            </log>
+
+            <!-- no customer means no dashboard, so these fail the whole request -->
+            <switch source="get-property('customerStatus')">
+                <case regex="200"/>
+                <case regex="404">
+                    <property name="errorStatus" value="404"/>
+                    <property name="errorMessage" value="Customer not found"/>
+                    <sequence key="ErrorResponseSeq"/>
+                </case>
+                <case regex="503|504">
+                    <property name="errorStatus" expression="get-property('customerStatus')"/>
+                    <property name="errorMessage" value="Customer service is unavailable. Try again later"/>
+                    <sequence key="ErrorResponseSeq"/>
+                </case>
+                <default>
+                    <log category="ERROR">
+                        <message>[CustomerDashboardAPI] Unexpected status from customer lookup, responding HTTP 502 | correlationId=${properties.synapse.correlationId} | status=${properties.synapse.customerStatus}</message>
+                    </log>
+                    <property name="errorStatus" value="502"/>
+                    <property name="errorMessage" value="Bad gateway. Unexpected response from customer service"/>
+                    <sequence key="ErrorResponseSeq"/>
+                </default>
+            </switch>
+
+            <!-- keep the customer record for the final response -->
+            <variable name="customer" type="JSON" expression="${payload.data.data}"/>
+
+            <!-- 2. get the balance of every account in the customer's account_number list -->
+            <variable name="accounts" type="JSON" value="[]"/>
+            <filter xpath="${exists(payload.data.data.account_number)}">
+                <then>
+                    <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+                    <header name="Accept" scope="transport" value="application/json"/>
+                    <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
+
+                    <!-- each account is called at the same time, the results are collected into vars.accounts -->
+                    <foreach collection="${payload.data.data.account_number}" parallel-execution="true"
+                             update-original="false" target-variable="accounts" result-content-type="JSON">
+                        <sequence>
+                            <variable name="accountNumber" type="STRING" expression="${payload}"/>
+                            <property name="uri.var.accountNumber" expression="${vars.accountNumber}"/>
+                            <call>
+                                <endpoint key="AccountBalanceAPIEP"/>
+                            </call>
+
+                            <!-- if this account fails we still return the rest of the dashboard,
+                                 the account is just marked as UNAVAILABLE -->
+                            <filter xpath="${properties.axis2.HTTP_SC != 200}">
+                                <then>
+                                    <log category="WARN">
+                                        <message>[CustomerDashboardAPI] Could not get balance for account | correlationId=${properties.synapse.correlationId} | customerId=${vars.customerIdMasked} | accountNumber=${vars.accountNumber} | status=${properties.axis2.HTTP_SC}</message>
+                                    </log>
+                                    <payloadFactory media-type="json">
+                                        <format>{
+                                                        "accountNumber": "${vars.accountNumber}",
+                                                        "status": "UNAVAILABLE",
+                                                        "error": "Balance could not be retrieved for this account",
+                                                        "code": ${properties.axis2.HTTP_SC}
+}</format>
+                                    </payloadFactory>
+                                </then>
+                                <else/>
+                            </filter>
+                        </sequence>
+                    </foreach>
+                </then>
+                <else>
+                    <log category="WARN">
+                        <message>[CustomerDashboardAPI] Customer has no accounts | correlationId=${properties.synapse.correlationId} | customerId=${vars.customerIdMasked}</message>
+                    </log>
+                </else>
+            </filter>
+
+            <!-- 3. put it all together -->
+            <payloadFactory media-type="json">
+                <format>{
+                                        "customerId": "${vars.customerId}",
+                                        "customer": ${vars.customer},
+                                        "accounts": ${vars.accounts},
+                                        "requestId": "${properties.synapse.correlationId}",
+                                        "timestamp": "${properties.synapse.requestTimestamp}"
+}</format>
+            </payloadFactory>
+
+            <property name="messageType" value="application/json" scope="axis2"/>
+            <property name="HTTP_SC" value="200" scope="axis2"/>
+            <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+            <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
+
+            <log category="INFO">
+                <message>[CustomerDashboardAPI] Response sent | correlationId=${properties.synapse.correlationId} | customerId=${vars.customerIdMasked} | status=200</message>
+            </log>
+            <respond/>
+        </inSequence>
+        <faultSequence>
+            <sequence key="GatewayFaultSeq"/>
+        </faultSequence>
+    </resource>
+</api>

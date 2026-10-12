@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sequence xmlns="http://ws.apache.org/ns/synapse" name="ErrorResponseSeq" trace="disable">
+    <!-- Reusable client/gateway error responder (standard error body, JSON, headers stripped).
+         Expects properties: errorStatus (HTTP code), errorMessage; optional errorDetails.
+         The caller logs the reason before calling this sequence -->
+    <property name="HTTP_SC" scope="axis2" type="STRING" expression="$ctx:errorStatus"/>
+    <filter xpath="${exists(properties.synapse.errorDetails)}">
+        <then>
+            <payloadFactory media-type="json">
+                <format>{"error":"${properties.synapse.errorMessage}","code":${integer(properties.synapse.errorStatus)},"details":"${properties.synapse.errorDetails}","requestId":"${properties.synapse.correlationId}","timestamp":"${properties.synapse.requestTimestamp}"}</format>
+            </payloadFactory>
+        </then>
+        <else>
+            <payloadFactory media-type="json">
+                <format>{"error":"${properties.synapse.errorMessage}","code":${integer(properties.synapse.errorStatus)},"requestId":"${properties.synapse.correlationId}","timestamp":"${properties.synapse.requestTimestamp}"}</format>
+            </payloadFactory>
+        </else>
+    </filter>
+    <property name="messageType" value="application/json" scope="axis2"/>
+    <property name="ContentType" value="application/json" scope="axis2"/>
+    <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+    <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
+    <respond/>
+</sequence>

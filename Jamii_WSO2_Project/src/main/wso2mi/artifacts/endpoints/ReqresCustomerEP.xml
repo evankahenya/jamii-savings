@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<endpoint xmlns="http://ws.apache.org/ns/synapse" name="ReqresCustomerEP">
+    <!-- uri.var.customerId is set by CustomerProxy after validation -->
+    <http method="get" uri-template="https://reqres.in/api/collections/jamii_data/records/{uri.var.customerId}?project_id=53942">
+        <timeout>
+            <duration>10000</duration>
+            <responseAction>fault</responseAction>
+        </timeout>
+        <markForSuspension>
+            <errorCodes>101504,101505,101508</errorCodes>
+            <retriesBeforeSuspension>2</retriesBeforeSuspension>
+            <retryDelay>0</retryDelay>
+        </markForSuspension>
+        <suspendOnFailure>
+            <errorCodes>101503</errorCodes>
+            <initialDuration>10000</initialDuration>
+            <progressionFactor>2.0</progressionFactor>
+            <maximumDuration>60000</maximumDuration>
+        </suspendOnFailure>
+    </http>
+</endpoint>

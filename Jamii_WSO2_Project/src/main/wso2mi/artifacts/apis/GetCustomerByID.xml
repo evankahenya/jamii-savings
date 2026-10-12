@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<api xmlns="http://ws.apache.org/ns/synapse"
+     name="GetCustomerByID"
+     context="/crm">
+
+    <resource methods="GET" uri-template="/customers/{customerId}">
+        <inSequence>
+            <!--inform fault sequence which api is currently runinning-->
+            <property name="artifactName" scope="default" type="STRING" value="GetCustomerByID"/>
+            <!--Start the Correlation ID sequence which checks if the request has a correlationID-->
+            <sequence key="CorrelationIdSeq"/>
+            <variable name="customerId" type="STRING" expression="$ctx:uri.var.customerId"/>
+
+            <log category="INFO">
+                <message>[GetCustomerByID] Request received | correlationId=${properties.synapse.correlationId} | correlationIdSource=${properties.synapse.correlationIdSource} | timestamp=${properties.synapse.requestTimestamp}</message>
+            </log>
+
+            <!-- Validate customerId (valid uuid)-->
+            <filter source="$ctx:uri.var.customerId" regex="^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$">
+                <then>
+                    <!--if customerId is valid then masking for discrete logging-->
+                    <variable name="customerIdMasked" type="STRING"
+                              expression="${subString(vars.customerId, 0, 8) + '-****-****-****-********' + subString(vars.customerId, 32)}"/>
+                </then>
+                <else>
+                    <log category="ERROR">
+                        <message>[GetCustomerByID] Validation failed: customerId must be a UUID, responding HTTP 400 | correlationId=${properties.synapse.correlationId}</message>
+                    </log>
+                    <property name="HTTP_SC" value="400" scope="axis2"/>
+                    <payloadFactory media-type="json">
+                        <format>{"error":"Invalid customerId. Expected a UUID.","code":400,"requestId":"${properties.synapse.correlationId}","timestamp":"${properties.synapse.requestTimestamp}"}</format>
+                    </payloadFactory>
+                    <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+                    <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
+                    <respond/>
+                </else>
+            </filter>
+
+            <!-- Strip all headers -->
+            <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+            <header name="Accept" scope="transport" value="application/json"/>
+            <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
+
+            <log category="INFO">
+                <message>[GetCustomerByID] Forwarding to CustomerProxy | correlationId=${properties.synapse.correlationId} | customerId=${vars.customerIdMasked}</message>
+            </log>
+            <call>
+                <endpoint key="CustomerProxyEP"/>
+            </call>
+            <log category="INFO">
+                <message>[GetCustomerByID] CustomerProxy responded | correlationId=${properties.synapse.correlationId} | customerId=${vars.customerIdMasked} | status=${properties.axis2.HTTP_SC}</message>
+            </log>
+
+            <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+            <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
+    
+            <respond/>
+        </inSequence>
+
+        <faultSequence>
+            <sequence key="GatewayFaultSeq"/>
+        </faultSequence>
+    </resource>
+</api>

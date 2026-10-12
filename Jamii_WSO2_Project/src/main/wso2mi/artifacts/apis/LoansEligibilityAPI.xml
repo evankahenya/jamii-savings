@@ -1,0 +1,241 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<api xmlns="http://ws.apache.org/ns/synapse" name="LoansEligibilityAPI" context="/loans">
+
+    <resource methods="POST" uri-template="/eligibility">
+        <inSequence>
+            <property name="artifactName" scope="default" type="STRING" value="LoansEligibilityAPI"/>
+            <sequence key="CorrelationIdSeq"/>
+            <log category="INFO">
+                <message>[LoansEligibilityAPI] Request received | correlationId=${properties.synapse.correlationId}</message>
+            </log>
+
+            <!-- only accept JSON requests -->
+            <filter source="$trp:Content-Type" regex="application/json.*">
+                <then/>
+                <else>
+                    <log category="WARN">
+                        <message>[LoansEligibilityAPI] Request is not JSON | correlationId=${properties.synapse.correlationId} | contentType=${headers["Content-Type"]}</message>
+                    </log>
+                    <property name="errorStatus" value="415"/>
+                    <property name="errorMessage" value="Unsupported body type. Request must be application/json"/>
+                    <sequence key="ErrorResponseSeq"/>
+                </else>
+            </filter>
+
+            <!-- if the body is broken JSON the validate step below throws an error and we end up in the
+                 faultSequence. This flag tells the faultSequence it was a bad request and not a server error -->
+            <property name="checkingRequest" value="true"/>
+
+            <!-- Validate request using JSON schema (schemas/LoansEligibilityRequest.json) -->
+            <validate>
+                <schema key="gov:mi-resources/schemas/LoansEligibilityRequest.json"/>
+                <on-fail>
+                    <log category="WARN">
+                        <message>[LoansEligibilityAPI] Validation failed | correlationId=${properties.synapse.correlationId} | reason=${properties.synapse.ERROR_MESSAGE}</message>
+                    </log>
+                    <property name="errorStatus" value="400"/>
+                    <property name="errorMessage" value="Invalid request. One or more fields are missing or invalid"/>
+                    <sequence key="ErrorResponseSeq"/>
+                </on-fail>
+            </validate>
+            <property name="checkingRequest" value="false"/>
+
+            <!-- email and other income are optional -->
+            <variable name="email" type="STRING"
+                      expression="${exists(payload.applicant.emailAddress) ? payload.applicant.emailAddress : ''}"/>
+            <variable name="otherIncome" type="STRING"
+                      expression="${exists(payload.employmentDetails.otherMonthlyIncome) ? payload.employmentDetails.otherMonthlyIncome.amount : 0}"/>
+
+            <!-- build the SOAP request for the backend -->
+            <payloadFactory media-type="xml">
+                <format>
+                    <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:v1="https://api.example.co.ke/loan/eligibility/v1">
+                        <soapenv:Header/>
+                        <soapenv:Body>
+                            <v1:CheckLoanEligibilityRequest>
+                                <v1:requestHeader>
+                                    <v1:channelId>${payload.channelId}</v1:channelId>
+                                    <v1:requestId>${properties.synapse.correlationId}</v1:requestId>
+                                    <v1:correlationId>${properties.synapse.correlationId}</v1:correlationId>
+                                    <v1:requestTimestamp>${properties.synapse.requestTimestamp}</v1:requestTimestamp>
+                                    <v1:sourceSystem>JAMII_MI</v1:sourceSystem>
+                                </v1:requestHeader>
+                                <v1:applicant>
+                                    <v1:customerReference>${payload.applicant.customerReference}</v1:customerReference>
+                                    <v1:firstName>${payload.applicant.firstName}</v1:firstName>
+                                    <v1:lastName>${payload.applicant.lastName}</v1:lastName>
+                                    <v1:nationalIdLastFour>${payload.applicant.nationalIdLastFour}</v1:nationalIdLastFour>
+                                    <v1:kraPin>${payload.applicant.kraPin}</v1:kraPin>
+                                    <v1:dateOfBirth>${payload.applicant.dateOfBirth}</v1:dateOfBirth>
+                                    <v1:mobileNumber>${payload.applicant.mobileNumber}</v1:mobileNumber>
+                                    <v1:emailAddress>${vars.email}</v1:emailAddress>
+                                    <v1:county>${payload.applicant.county}</v1:county>
+                                    <v1:residencyStatus>${payload.applicant.residencyStatus}</v1:residencyStatus>
+                                </v1:applicant>
+                                <v1:employmentDetails>
+                                    <v1:employmentType>${payload.employmentDetails.employmentType}</v1:employmentType>
+                                    <v1:employerOrBusinessName>${payload.employmentDetails.employerOrBusinessName}</v1:employerOrBusinessName>
+                                    <v1:monthsWithEmployerOrBusiness>${payload.employmentDetails.monthsWithEmployerOrBusiness}</v1:monthsWithEmployerOrBusiness>
+                                    <v1:monthlyGrossIncome>
+                                        <v1:amount>${payload.employmentDetails.monthlyGrossIncome.amount}</v1:amount>
+                                        <v1:currency>${payload.employmentDetails.monthlyGrossIncome.currency}</v1:currency>
+                                    </v1:monthlyGrossIncome>
+                                    <v1:monthlyNetIncome>
+                                        <v1:amount>${payload.employmentDetails.monthlyNetIncome.amount}</v1:amount>
+                                        <v1:currency>${payload.employmentDetails.monthlyNetIncome.currency}</v1:currency>
+                                    </v1:monthlyNetIncome>
+                                    <v1:otherMonthlyIncome>
+                                        <v1:amount>${vars.otherIncome}</v1:amount>
+                                        <v1:currency>KES</v1:currency>
+                                    </v1:otherMonthlyIncome>
+                                    <v1:incomeVerified>${payload.employmentDetails.incomeVerified}</v1:incomeVerified>
+                                </v1:employmentDetails>
+                                <v1:loanRequest>
+                                    <v1:productCode>${payload.loanRequest.productCode}</v1:productCode>
+                                    <v1:requestedAmount>
+                                        <v1:amount>${payload.loanRequest.requestedAmount.amount}</v1:amount>
+                                        <v1:currency>${payload.loanRequest.requestedAmount.currency}</v1:currency>
+                                    </v1:requestedAmount>
+                                    <v1:requestedTenorMonths>${payload.loanRequest.requestedTenorMonths}</v1:requestedTenorMonths>
+                                    <v1:purpose>${payload.loanRequest.purpose}</v1:purpose>
+                                    <v1:repaymentMethod>${payload.loanRequest.repaymentMethod}</v1:repaymentMethod>
+                                    <v1:existingObligations>
+                                        <v1:monthlyLoanRepayments>
+                                            <v1:amount>${payload.loanRequest.existingObligations.monthlyLoanRepayments.amount}</v1:amount>
+                                            <v1:currency>${payload.loanRequest.existingObligations.monthlyLoanRepayments.currency}</v1:currency>
+                                        </v1:monthlyLoanRepayments>
+                                        <v1:monthlyMobileLoanRepayments>
+                                            <v1:amount>${payload.loanRequest.existingObligations.monthlyMobileLoanRepayments.amount}</v1:amount>
+                                            <v1:currency>${payload.loanRequest.existingObligations.monthlyMobileLoanRepayments.currency}</v1:currency>
+                                        </v1:monthlyMobileLoanRepayments>
+                                        <v1:monthlyOtherDebtPayments>
+                                            <v1:amount>${payload.loanRequest.existingObligations.monthlyOtherDebtPayments.amount}</v1:amount>
+                                            <v1:currency>${payload.loanRequest.existingObligations.monthlyOtherDebtPayments.currency}</v1:currency>
+                                        </v1:monthlyOtherDebtPayments>
+                                        <v1:hasOverdueFacility>${payload.loanRequest.existingObligations.hasOverdueFacility}</v1:hasOverdueFacility>
+                                        <v1:daysPastDue>${payload.loanRequest.existingObligations.daysPastDue}</v1:daysPastDue>
+                                    </v1:existingObligations>
+                                </v1:loanRequest>
+                                <v1:consentToCreditAssessment>${payload.consentToCreditAssessment}</v1:consentToCreditAssessment>
+                            </v1:CheckLoanEligibilityRequest>
+                        </soapenv:Body>
+                    </soapenv:Envelope>
+                </format>
+            </payloadFactory>
+
+            <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+            <property name="messageType" value="text/xml" scope="axis2"/>
+            <header name="Action" value="CheckLoanEligibility"/>
+            <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
+
+            <call>
+                <endpoint key="LoanEligibilitySoapEP"/>
+            </call>
+
+            <property name="backendStatus" expression="$axis2:HTTP_SC"/>
+            <log category="INFO">
+                <message>[LoansEligibilityAPI] Backend responded | correlationId=${properties.synapse.correlationId} | backendStatus=${properties.synapse.backendStatus}</message>
+            </log>
+
+            <!-- anything other than 200 from the backend is a 502 -->
+            <filter source="get-property('backendStatus')" regex="200">
+                <then/>
+                <else>
+                    <property name="errorStatus" value="502"/>
+                    <property name="errorMessage" value="Bad gateway. Unexpected response from loan service"/>
+                    <sequence key="ErrorResponseSeq"/>
+                </else>
+            </filter>
+
+            <!-- Valid soap response from backend using XML Schema Definition file (schema/LoansEligibilityResponse.xsd) -->
+            <validate source="$body/jam:CheckLoanEligibilityResponse" xmlns:jam="http://jamii.loans.app/schema">
+                <schema key="gov:mi-resources/schemas/LoansEligibilityResponse.xsd"/>
+                <on-fail>
+                    <log category="ERROR">
+                        <message>[LoansEligibilityAPI] Backend response validation failed | correlationId=${properties.synapse.correlationId} | reason=${properties.synapse.ERROR_MESSAGE}</message>
+                    </log>
+                    <property name="errorStatus" value="502"/>
+                    <property name="errorMessage" value="Bad gateway. Unexpected response from loan service"/>
+                    <sequence key="ErrorResponseSeq"/>
+                </on-fail>
+            </validate>
+
+            <!-- read the values we need from the SOAP response -->
+            <property name="status" expression="$body/jam:CheckLoanEligibilityResponse/Status" xmlns:jam="http://jamii.loans.app/schema"/>
+            <property name="riskBand" expression="$body/jam:CheckLoanEligibilityResponse/RiskBand" xmlns:jam="http://jamii.loans.app/schema"/>
+            <property name="requestedAmount" expression="$body/jam:CheckLoanEligibilityResponse/RequestedAmount" xmlns:jam="http://jamii.loans.app/schema"/>
+            <property name="requestedCurrency" expression="$body/jam:CheckLoanEligibilityResponse/RequestedAmount/@currency" xmlns:jam="http://jamii.loans.app/schema"/>
+            <property name="indicativeAmount" expression="$body/jam:CheckLoanEligibilityResponse/IndicativeAmount" xmlns:jam="http://jamii.loans.app/schema"/>
+            <property name="indicativeCurrency" expression="$body/jam:CheckLoanEligibilityResponse/IndicativeAmount/@currency" xmlns:jam="http://jamii.loans.app/schema"/>
+            <property name="tenorMonths" expression="$body/jam:CheckLoanEligibilityResponse/TenorMonths" xmlns:jam="http://jamii.loans.app/schema"/>
+            <property name="instalment" expression="$body/jam:CheckLoanEligibilityResponse/Instalment" xmlns:jam="http://jamii.loans.app/schema"/>
+            <property name="instalmentCurrency" expression="$body/jam:CheckLoanEligibilityResponse/Instalment/@currency" xmlns:jam="http://jamii.loans.app/schema"/>
+            <property name="dti" expression="$body/jam:CheckLoanEligibilityResponse/DebtToIncomeRatio" xmlns:jam="http://jamii.loans.app/schema"/>
+            <property name="reasons" expression="$body/jam:CheckLoanEligibilityResponse/Reasons" xmlns:jam="http://jamii.loans.app/schema"/>
+            <property name="nextSteps" expression="$body/jam:CheckLoanEligibilityResponse/NextSteps" xmlns:jam="http://jamii.loans.app/schema"/>
+
+            <!-- build the JSON response-->
+            <payloadFactory media-type="json">
+                <format>{
+                            "status": "${properties.synapse.status}",
+                            "riskBand": "${properties.synapse.riskBand}",
+                            "requestedAmount": {
+                                "amount": ${properties.synapse.requestedAmount},
+                                "currency": "${properties.synapse.requestedCurrency}"
+                            },
+                            "indicativeAmount": {
+                                "amount": ${properties.synapse.indicativeAmount},
+                                "currency": "${properties.synapse.indicativeCurrency}"
+                            },
+                            "tenorMonths": ${properties.synapse.tenorMonths},
+                            "instalment": {
+                                "amount": ${properties.synapse.instalment},
+                                "currency": "${properties.synapse.instalmentCurrency}"
+                            },
+                            "debtToIncomeRatio": ${properties.synapse.dti},
+                            "reasons": "${properties.synapse.reasons}",
+                            "nextSteps": "${properties.synapse.nextSteps}",
+                            "requestId": "${properties.synapse.correlationId}",
+                            "timestamp": "${properties.synapse.requestTimestamp}"
+}</format>
+            </payloadFactory>
+
+            <property name="messageType" value="application/json" scope="axis2"/>
+            <property name="HTTP_SC" value="200" scope="axis2"/>
+            <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+            <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
+
+            <log category="INFO">
+                <message>[LoansEligibilityAPI] Response sent | correlationId=${properties.synapse.correlationId} | status=${properties.synapse.status}</message>
+            </log>
+            <respond/>
+        </inSequence>
+        <faultSequence>
+            <!-- broken JSON body gives a 400, anything else goes to the normal fault handling -->
+            <filter source="get-property('checkingRequest')" regex="true">
+                <then>
+                    <log category="WARN">
+                        <message>[LoansEligibilityAPI] Request body is not valid JSON | correlationId=${properties.synapse.correlationId} | error=${properties.synapse.ERROR_MESSAGE}</message>
+                    </log>
+                    <property name="errorStatus" value="400"/>
+                    <property name="errorMessage" value="Invalid request. Body is not valid JSON"/>
+                    <sequence key="ErrorResponseSeq"/>
+                </then>
+                <else>
+                    <sequence key="GatewayFaultSeq"/>
+                </else>
+            </filter>
+        </faultSequence>
+    </resource>
+
+    <!-- only POST is allowed -->
+    <resource methods="GET PUT DELETE PATCH" uri-template="/eligibility">
+        <inSequence>
+            <sequence key="CorrelationIdSeq"/>
+            <property name="errorStatus" value="405"/>
+            <property name="errorMessage" value="Method not allowed. Use POST"/>
+            <property name="NO_ENTITY_BODY" action="remove" scope="axis2"/>
+            <sequence key="ErrorResponseSeq"/>
+        </inSequence>
+    </resource>
+</api>

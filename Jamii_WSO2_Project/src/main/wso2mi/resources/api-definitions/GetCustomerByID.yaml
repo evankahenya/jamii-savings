@@ -1,0 +1,287 @@
+openapi: 3.0.1
+info:
+  title: GetCustomerByID
+  description: >
+    Returns a customer record from the CRM customer records backend (Reqres),
+    called through the CustomerProxy proxy service. The backend record is
+    returned as is.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8290/crm
+  - url: https://localhost:8253/crm
+paths:
+  /customers/{customerId}:
+    get:
+      summary: Get customer by ID
+      description: Returns the customer record for the given customer ID.
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          description: Customer record UUID
+          schema:
+            type: string
+            format: uuid
+          example: e46f08a1-2750-46c6-a2eb-21e1b11fe57a
+        - name: X-Correlation-ID
+          in: header
+          required: false
+          description: |
+            **Leave empty when testing** or turn on CORS
+
+            Optional caller correlation ID (8-64 chars of A-Z a-z 0-9 . _ - :). Generated if missing or malformed.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Customer record (backend payload returned as is)
+          headers:
+            X-Correlation-ID:
+              schema:
+                type: string
+                example: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerRecord"
+              examples:
+                customer:
+                  summary: Customer found
+                  value:
+                    data:
+                      id: e46f08a1-2750-46c6-a2eb-21e1b11fe57a
+                      collection_id: 872ef233-86b1-4415-8a1e-47f1d3e84696
+                      project_id: 53942
+                      app_user_id: null
+                      created_by: 147235
+                      created_at: "2026-10-11T17:02:14.913Z"
+                      updated_at: "2026-10-11T17:02:14.913Z"
+                      deleted_at: null
+                      data:
+                        name: Felix Omondi Onyango
+                        email: felix.onyango@example.com
+                        phone: "+254732345641"
+                        address:
+                          city: Nairobi
+                          county: Nairobi
+                          street: Mombasa Road
+                          country: Kenya
+                          postal_code: "00506"
+                        kra_pin: A212345678X
+                        lastname: Onyango
+                        firstname: Felix
+                        date_of_birth: "1989-01-09"
+                        account_number:
+                          - "0051012695378"
+                        identification_number: "31278945"
+                        identification_document: ID
+        "400":
+          description: customerId is not a UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidCustomerId:
+                  summary: customerId is not a UUID
+                  value:
+                    error: Invalid customerId. Expected a UUID.
+                    code: 400
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+        "404":
+          description: No customer with this ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerNotFoundError"
+              examples:
+                customerNotFound:
+                  summary: Customer does not exist
+                  value:
+                    error: Customer not found
+                    customerId: 00000000-0000-4000-8000-000000000000
+                    code: 404
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+        "500":
+          description: Unexpected internal error while processing the request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                internalError:
+                  summary: Mediation error
+                  value:
+                    error: Internal server error
+                    code: 500
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+        "502":
+          description: The customer records backend returned an unexpected status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                badGateway:
+                  summary: Unexpected backend status
+                  value:
+                    error: Bad gateway. Unexpected response from upstream service
+                    code: 502
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+        "503":
+          description: The customer records backend could not be reached, or is temporarily suspended after repeated connection failures
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                serviceUnavailable:
+                  summary: Backend unreachable
+                  value:
+                    error: Service unavailable. Upstream service is unreachable
+                    code: 503
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+        "504":
+          description: The customer records backend did not respond within 10 seconds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                gatewayTimeout:
+                  summary: Backend timed out
+                  value:
+                    error: Gateway timeout. Upstream service did not respond in time
+                    code: 504
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: "2026-10-12T09:15:30.123+03:00"
+components:
+  schemas:
+    CustomerRecord:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              example: e46f08a1-2750-46c6-a2eb-21e1b11fe57a
+            collection_id:
+              type: string
+              example: 872ef233-86b1-4415-8a1e-47f1d3e84696
+            project_id:
+              type: integer
+              example: 53942
+            app_user_id:
+              type: string
+              nullable: true
+              example: null
+            created_by:
+              type: integer
+              example: 147235
+            created_at:
+              type: string
+              format: date-time
+              example: "2026-10-11T17:02:14.913Z"
+            updated_at:
+              type: string
+              format: date-time
+              example: "2026-10-11T17:02:14.913Z"
+            deleted_at:
+              type: string
+              format: date-time
+              nullable: true
+              example: null
+            data:
+              $ref: "#/components/schemas/Customer"
+    Customer:
+      type: object
+      properties:
+        name:
+          type: string
+          example: Felix Omondi Onyango
+        email:
+          type: string
+          example: felix.onyango@example.com
+        phone:
+          type: string
+          example: "+254732345641"
+        address:
+          type: object
+          properties:
+            city:
+              type: string
+              example: Nairobi
+            county:
+              type: string
+              example: Nairobi
+            street:
+              type: string
+              example: Mombasa Road
+            country:
+              type: string
+              example: Kenya
+            postal_code:
+              type: string
+              example: "00506"
+        kra_pin:
+          type: string
+          example: A212345678X
+        lastname:
+          type: string
+          example: Onyango
+        firstname:
+          type: string
+          example: Felix
+        date_of_birth:
+          type: string
+          format: date
+          example: "1989-01-09"
+        account_number:
+          type: array
+          items:
+            type: string
+            example: "0051012695378"
+        identification_number:
+          type: string
+          example: "31278945"
+        identification_document:
+          type: string
+          example: ID
+    Error:
+      type: object
+      required:
+        - error
+        - code
+        - requestId
+        - timestamp
+      properties:
+        error:
+          type: string
+          example: Invalid customerId. Expected a UUID.
+        code:
+          type: integer
+          example: 400
+        requestId:
+          type: string
+          description: Correlation ID of the request (also sent in the X-Correlation-ID header)
+          example: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-10-12T09:15:30.123+03:00"
+    CustomerNotFoundError:
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required:
+            - customerId
+          properties:
+            customerId:
+              type: string
+              example: 00000000-0000-4000-8000-000000000000
