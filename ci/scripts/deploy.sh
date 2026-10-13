@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+# =====================================================================
+# Deploys the MI CAR + ALL APIM APIs to one environment - all or nothing.
+#
+#   1. Pre-flight   : artifacts exist, MI + APIM reachable and logins work
+#   2. Backup       : export the current version of every API from APIM
+#   3. Deploy MI    : replace the CApp, wait until MI reports it active
+#   4. Deploy APIM  : import/update every API (new revision, deployed to gateway)
+#   5. Smoke tests  : MI direct + through the gateway
+#
+# If ANY step after pre-flight fails, everything already changed is rolled back
+# (APIs restored from the backup or deleted if new, MI restored to the last good
+# CAR) and the script exits non-zero - no partial deployments.
+#
+# Required env: TARGET_ENV APIM_URL APIM_USER APIM_PASS MI_MGMT_URL MI_USER MI_PASS
+#               MI_URL GATEWAY_URL      (Jenkins sets these from ci/environments/*)
+# Optional:     STATE_DIR (where the last good CAR per env is kept)
+# =====================================================================
+. "$(dirname "$0")/common.sh"
+require_vars TARGET_ENV APIM_URL APIM_USER APIM_PASS MI_MGMT_URL MI_USER MI_PASS MI_URL GATEWAY_URL
+
+STATE_DIR=${STATE_DIR:-${JENKINS_HOME:-$REPO_ROOT/.ci-state}/jamii-state}
+# last successfully deployed CAR, kept under its ORIGINAL file name (MI identifies a CApp by it)
+LAST_GOOD_DIR="$STATE_DIR/$TARGET_ENV/last-good"
+LAST_GOOD=$(ls "$LAST_GOOD_DIR"/*.car 2>/dev/null | head -1 || true)
+WORK="$DIST_DIR/deploy-$TARGET_ENV"
+BACKUP="$WORK/backup"
+mapfile -t APIS < <(api_names)
+
+IMPORTED=()      # APIs we have touched in APIM (for rollback)
+NEW_APIS=()      # APIs that did not exist before this deploy
+MI_TOUCHED=false
+
+# ---------------------------------------------------------------------
+rollback() {
+  set +e
+  local problems=0
+  log "ROLLING BACK $TARGET_ENV"
+  # the smoke test's helper app subscribes to the APIs; subscriptions block deleting an API
+  apictl delete app -n default-apictl-app -e "$TARGET_ENV" -k >/dev/null 2>&1
+  for ((i = ${#IMPORTED[@]} - 1; i >= 0; i--)); do
+    local api=${IMPORTED[$i]}
+    if [[ " ${NEW_APIS[*]} " == *" $api "* ]]; then
+      if apictl delete api -n "$api" -v 1.0.0 -r admin -e "$TARGET_ENV" -k >/dev/null 2>&1 || ! apim_api_exists "$api"; then
+        ok "APIM: removed new API $api"
+      else fail "APIM: could not remove $api"; problems=$((problems + 1)); fi
+    else
+      # --params re-applies this env's gateway deployment (an export doesn't carry it),
+      # so the restored version is what the gateway serves again
+      if apictl import api -f "$BACKUP/$api.zip" -e "$TARGET_ENV" --params "$DIST_DIR/apis/$api.params.yaml" \
+           --update --rotate-revision -k >/dev/null 2>&1; then
+        ok "APIM: restored previous $api"
+      else fail "APIM: could not restore $api"; problems=$((problems + 1)); fi
+    fi
+  done
+  if $MI_TOUCHED; then
+    if [ -n "$LAST_GOOD" ]; then
+      if mi_deploy_car "$LAST_GOOD"; then ok "MI: restored last good CAR"
+      else fail "MI: could not restore last good CAR"; problems=$((problems + 1)); fi
+    else
+      # first ever deploy to this env: there is no previous version to go back to,
+      # so remove the new CApp rather than leave it running without its APIs
+      local base; base=$(basename "$CAR" .car)
+      if mi_undeploy_capp "${base%_*}" "$base"; then warn "MI: no previous CAR known - removed the new CApp"
+      else fail "MI: could not remove the new CApp"; problems=$((problems + 1)); fi
+    fi
+  fi
+  if [ "$problems" -gt 0 ]; then
+    echo "!!! ROLLBACK INCOMPLETE ($problems problem(s)) - $TARGET_ENV needs manual attention !!!" >&2
+  else
+    echo "Rollback complete - $TARGET_ENV is back to its previous state."
+  fi
+}
+
+on_error() {
+  local code=$? line=$1
+  [ "$BASH_SUBSHELL" -gt 0 ] && exit "$code"   # let the error reach the main shell first
+  trap - ERR
+  echo >&2; echo "Deployment to $TARGET_ENV FAILED (line $line, exit $code)." >&2
+  rollback
+  exit 1
+}
+
+# ---------------------------------------------------------------------
+log "Pre-flight checks for $TARGET_ENV"
+CARS=("$MI_PROJECT"/target/*.car)
+[ "${#CARS[@]}" -eq 1 ] && [ -f "${CARS[0]}" ] || { echo "Expected exactly one .car in $MI_PROJECT/target" >&2; exit 1; }
+CAR=${CARS[0]}; ok "CAR: $(basename "$CAR")"
+for api in "${APIS[@]}"; do
+  [ -f "$DIST_DIR/apis/${api}_1.0.0.zip" ] || { echo "Missing package for $api - run package-apis.sh" >&2; exit 1; }
+done
+ok "API packages: ${APIS[*]}"
+mi_login;      ok "MI management API: $MI_MGMT_URL"
+apictl_setup;  ok "API Manager: $APIM_URL"
+rm -rf "${WORK:?}"; mkdir -p "$BACKUP" "$LAST_GOOD_DIR"
+
+# From here on, any failure rolls back what was already changed
+set -E
+trap 'on_error $LINENO' ERR
+
+log "Backing up current APIs from APIM"
+for api in "${APIS[@]}"; do
+  if apim_api_exists "$api"; then
+    apictl export api -n "$api" -v 1.0.0 -e "$TARGET_ENV" -k >/dev/null
+    mv "$HOME/.wso2apictl/exported/apis/$TARGET_ENV/${api}_1.0.0.zip" "$BACKUP/$api.zip"
+    ok "$api (backed up)"
+  else
+    NEW_APIS+=("$api"); ok "$api (new - will be created)"
+  fi
+done
+if [ -n "$LAST_GOOD" ]; then ok "MI rollback copy: $LAST_GOOD"
+else warn "no previous CAR recorded for $TARGET_ENV - a rollback would remove the CApp"; fi
+
+log "Deploying $(basename "$CAR") to MI"
+MI_TOUCHED=true
+mi_deploy_car "$CAR"
+apis_on_mi=$(mi_api GET /apis | jq -r '.list[].name')
+for api in "${APIS[@]}"; do
+  grep -qx "$api" <<<"$apis_on_mi" || fail "MI did not deploy API $api"
+done
+ok "MI: CApp active, APIs live: $(tr '\n' ' ' <<<"$apis_on_mi")"
+
+log "Importing APIs into API Manager"
+for api in "${APIS[@]}"; do
+  IMPORTED+=("$api")
+  apictl import api -f "$DIST_DIR/apis/${api}_1.0.0.zip" -e "$TARGET_ENV" \
+    --params "$DIST_DIR/apis/$api.params.yaml" --update --rotate-revision -k >/dev/null
+  ok "$api imported, published and deployed to gateway"
+done
+
+log "Smoke testing"
+bash "$REPO_ROOT/ci/scripts/smoke-test.sh"
+
+trap - ERR
+rm -f "${LAST_GOOD_DIR:?}"/*.car
+cp "$CAR" "$LAST_GOOD_DIR/"
+log "Deployment to $TARGET_ENV succeeded: MI CApp + ${#APIS[@]} APIs"

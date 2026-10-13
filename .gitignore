@@ -1,0 +1,3 @@
+# CI build output (API packages, deploy backups)
+dist/
+.ci-state/

@@ -1,0 +1,13 @@
+# Smoke tests run after every deployment - once directly against MI, once through
+# the APIM gateway (with a real access token). Any mismatch fails the deploy and
+# triggers a rollback.
+#
+# They only use the local DB and the APIs' own validation, so they don't depend
+# on external backends (reqres.in, beeceptor) being up.
+#
+# API | METHOD | path after the API context | expected HTTP status | request body (optional)
+AccountBalanceAPI    | GET  | /0022012569822/balance | 200 |
+AccountBalanceAPI    | GET  | /123/balance           | 400 |
+CustomerDashboardAPI | GET  | /not-a-uuid/dashboard  | 400 |
+GetCustomerByID      | GET  | /customers/not-a-uuid  | 400 |
+LoansEligibilityAPI  | POST | /eligibility           | 400 | {}

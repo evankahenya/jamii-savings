@@ -1,0 +1,77 @@
+# =====================================================================
+# MI 4.6 config for the PROD *container* (PLACEHOLDER - not run on this PC).
+# Based on Jamii_WSO2_Project/deployment/deployment.toml (used by VS Code),
+# with container-specific changes marked  >>> CONTAINER <<<
+# If you change masking/passthru settings in the project file, copy them here too.
+# =====================================================================
+
+[server]
+hostname = "localhost"
+# >>> CONTAINER <<< pick up .car files dropped into carbonapps/ without a restart
+hot_deployment = true
+
+[user_store]
+type = "read_only_ldap"
+
+[keystore.primary]
+file_name = "repository/resources/security/wso2carbon.jks"
+password = "wso2carbon"     # secret-detector:ignore
+alias = "wso2carbon"
+key_password = "wso2carbon"     # secret-detector:ignore
+
+[truststore]
+file_name = "repository/resources/security/client-truststore.jks"
+password = "wso2carbon"     # secret-detector:ignore
+alias = "symmetric.key.value"
+algorithm = "AES"
+
+# ---------------------------------------------------------------------
+# >>> CONTAINER <<< Jamii Savings DB lives in the shared Docker volume
+# created by the sqlite-init service (see compose.yaml)
+# ---------------------------------------------------------------------
+[[datasource]]
+id = "JamiiDB"
+url = "jdbc:sqlite:/home/wso2carbon/jamii-data/Jamii_db"
+driver = "org.sqlite.JDBC"
+pool_options.maxActive = 10
+pool_options.testOnBorrow = true
+pool_options.validationQuery = "SELECT 1"
+
+# ---------------------------------------------------------------------
+# >>> CONTAINER <<< JMS transport -> ActiveMQ container ("activemq" is the
+# compose service name). Credentials come from env/<env>.secrets.env.
+# ---------------------------------------------------------------------
+[transport.jms]
+sender_enable = true
+listener_enable = true
+
+[[transport.jms.sender]]
+name = "myQueueSender"
+parameter.initial_naming_factory = "org.apache.activemq.jndi.ActiveMQInitialContextFactory"
+parameter.provider_url = "tcp://activemq:61616"
+parameter.connection_factory_name = "QueueConnectionFactory"
+parameter.connection_factory_type = "queue"
+parameter.cache_level = "producer"
+parameter.username = "$env{ACTIVEMQ_CONNECTION_USER}"
+parameter.password = "$env{ACTIVEMQ_CONNECTION_PASSWORD}"
+
+[[transport.jms.listener]]
+name = "myQueueListener"
+parameter.initial_naming_factory = "org.apache.activemq.jndi.ActiveMQInitialContextFactory"
+parameter.provider_url = "tcp://activemq:61616"
+parameter.connection_factory_name = "QueueConnectionFactory"
+parameter.connection_factory_type = "queue"
+parameter.cache_level = "consumer"
+parameter.username = "$env{ACTIVEMQ_CONNECTION_USER}"
+parameter.password = "$env{ACTIVEMQ_CONNECTION_PASSWORD}"
+
+# Log masking (PII). Requires %mm instead of %m in conf/log4j2.properties layout patterns.
+[masking_pattern.properties]
+"ACCOUNT_NUMBER_PATH" = '(?<=/accounts/)[^/ ?"}]+?(?=[^/ ?"}]{4}(?:[/ ?"}]|$))'
+"CUSTOMER_ID_PATH" = '(?<=/customers/(?:records/)?)(?!records/)[^/ ?"}]+?(?=[^/ ?"}]{4}(?:[/ ?"}]|$))'
+"CUSTOMER_PROXY_PATH" = '(?<=/services/CustomerProxy/)[^/ ?"}]+?(?=[^/ ?"}]{4}(?:[/ ?"}]|$))'
+"ACCOUNT_NUMBER_FIELD" = '(?<=accountNumber[=": ]{1,4})[0-9]{9}(?=[0-9]{4}(?![0-9]))'
+
+# Never pass backend Server headers through to API clients (default true)
+[passthru_properties]
+'http.server.preserve' = false

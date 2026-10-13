@@ -1,0 +1,33 @@
+# Per-environment settings, used with:  apictl import api ... -e <env> --params params.yaml
+# 'mi' is the MI service name on each environment's own Docker network.
+environments:
+  - name: dev
+    configs:
+      endpoints:
+        production:
+          url: http://mi:8290/loans
+        sandbox:
+          url: http://mi:8290/loans
+      deploymentEnvironments:
+        - displayOnDevportal: true
+          deploymentEnvironment: Default
+  - name: uat
+    configs:
+      endpoints:
+        production:
+          url: http://mi:8290/loans
+        sandbox:
+          url: http://mi:8290/loans
+      deploymentEnvironments:
+        - displayOnDevportal: true
+          deploymentEnvironment: Default
+  - name: prod
+    configs:
+      endpoints:
+        production:
+          url: http://mi:8290/loans
+        sandbox:
+          url: http://mi:8290/loans
+      deploymentEnvironments:
+        - displayOnDevportal: true
+          deploymentEnvironment: Default

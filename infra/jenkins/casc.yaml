@@ -1,0 +1,55 @@
+# Jenkins Configuration-as-Code. Applied on every Jenkins start.
+# ${VAR:-default} values come from infra/jenkins/compose.yaml (or your .env).
+jenkins:
+  systemMessage: "Jamii CI. This Jenkins is configured from code: infra/jenkins/casc.yaml"
+  numExecutors: 2
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_USER:-admin}"
+          password: "${JENKINS_ADMIN_PASSWORD:-admin}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+unclassified:
+  location:
+    url: "${JENKINS_URL:-http://localhost:8081/}"
+
+# Logins the pipeline uses for each environment (ids are referenced in ci/environments/<env>.properties)
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: "apim-dev-admin"
+              description: "API Manager (dev) admin"
+              username: "${APIM_DEV_USER:-admin}"
+              password: "${APIM_DEV_PASSWORD:-admin}"
+          - usernamePassword:
+              scope: GLOBAL
+              id: "mi-dev-admin"
+              description: "Micro Integrator (dev) management API"
+              username: "${MI_DEV_USER:-admin}"
+              password: "${MI_DEV_PASSWORD:-admin}"
+
+# The pipeline job: reads the Jenkinsfile from the repo
+jobs:
+  - script: |
+      pipelineJob('jamii-api-deploy') {
+        description('Builds the MI CAR + the 4 APIM APIs and deploys them dev -> uat -> prod. Defined in infra/jenkins/casc.yaml')
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote { url('${JAMII_GIT_URL:-file:///repo}') }
+                branch('${JAMII_GIT_BRANCH:-*/main}')
+              }
+            }
+            scriptPath('Jenkinsfile')
+            lightweight(false)
+          }
+        }
+      }

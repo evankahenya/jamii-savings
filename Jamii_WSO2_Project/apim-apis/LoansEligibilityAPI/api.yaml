@@ -1,0 +1,43 @@
+# APIM definition of LoansEligibilityAPI (apictl project format, APIM 4.7).
+# The OpenAPI definition and the policies are NOT stored here - the pipeline copies them in
+# when packaging (from src/main/wso2mi/resources/api-definitions/ and apim-policies/),
+# so there is only one copy of each. Per-environment backend URLs are in params.yaml.
+type: api
+version: v4.7.0
+data:
+  name: LoansEligibilityAPI
+  description: Checks loan eligibility through the SOAP loans backend.
+  context: /loans
+  version: 1.0.0
+  provider: admin
+  lifeCycleStatus: PUBLISHED
+  isRevision: false
+  revisionId: 0
+  type: HTTP
+  transport:
+  - http
+  - https
+  policies:
+  - Unlimited
+  - Gold
+  - Silver
+  - Bronze
+  visibility: PUBLIC
+  endpointConfig:
+    endpoint_type: http
+    production_endpoints:
+      url: http://mi:8290/loans
+    sandbox_endpoints:
+      url: http://mi:8290/loans
+  endpointImplementationType: ENDPOINT
+  # Applied to every operation of the API
+  apiPolicies:
+    request: []
+    response:
+    - policyName: jamiiHeaderSecurityPolicies
+      policyVersion: v1
+      parameters: {}
+    fault:
+    - policyName: jamiiBackendErrorPolicy
+      policyVersion: v1
+      parameters: {}
