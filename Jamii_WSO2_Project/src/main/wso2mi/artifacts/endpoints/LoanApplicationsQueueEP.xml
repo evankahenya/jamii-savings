@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<endpoint xmlns="http://ws.apache.org/ns/synapse" name="LoanApplicationsQueueEP">
+    <!-- JMS queue LoanApplicationsQueue: input of LoanApplicationConsumer. LoanApplicationAPI publishes here.
+         Uses the "myQueueSender" connection factory from deployment.toml (broker URL + login live there) -->
+    <address uri="jms:/LoanApplicationsQueue?transport.jms.ConnectionFactory=myQueueSender&amp;transport.jms.DestinationType=queue"/>
+</endpoint>

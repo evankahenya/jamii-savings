@@ -11,3 +11,4 @@ AccountBalanceAPI    | GET  | /123/balance           | 400 |
 CustomerDashboardAPI | GET  | /not-a-uuid/dashboard  | 400 |
 GetCustomerByID      | GET  | /customers/not-a-uuid  | 400 |
 LoansEligibilityAPI  | POST | /eligibility           | 400 | {}
+LoanApplicationAPI   | POST | /loan-applications     | 400 | {}

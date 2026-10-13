@@ -8,6 +8,22 @@
             <properties></properties>
         </item>
     </artifact>
+    <artifact name="resources_schemas_LoanApplicationEvent_json" groupId="com.microintegrator.projects" version="1.0.0" type="registry/resource" serverRole="EnterpriseIntegrator">
+        <item>
+            <file>LoanApplicationEvent.json</file>
+            <path>/_system/governance/mi-resources/schemas</path>
+            <mediaType>application/json</mediaType>
+            <properties></properties>
+        </item>
+    </artifact>
+    <artifact name="resources_schemas_LoanApplicationRequest_json" groupId="com.microintegrator.projects" version="1.0.0" type="registry/resource" serverRole="EnterpriseIntegrator">
+        <item>
+            <file>LoanApplicationRequest.json</file>
+            <path>/_system/governance/mi-resources/schemas</path>
+            <mediaType>application/json</mediaType>
+            <properties></properties>
+        </item>
+    </artifact>
     <artifact name="resources_schemas_LoansEligibilityResponse_xsd" groupId="com.microintegrator.projects" version="1.0.0" type="registry/resource" serverRole="EnterpriseIntegrator">
         <item>
             <file>LoansEligibilityResponse.xsd</file>

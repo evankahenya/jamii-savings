@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sequence xmlns="http://ws.apache.org/ns/synapse" name="LoanApplicationRetrySeq" trace="disable">
+    <!-- Delayed retry for when LoansEligibilityAPI is down / timing out / answering 5xx.
+         The original event goes to LoanApplicationsRetryQueue with a time-to-live. Nothing reads
+         that queue: when the TTL runs out ActiveMQ moves the message back to LoanApplicationsQueue
+         (rule in infra/activemq/jamii-activemq.xml) and LoanApplicationConsumer tries again.
+         The retry count travels with the message as the JMS property "retryCount".
+         Limits come from config: loan_max_retries (default 3), loan_retry_ttl_ms (default 60000).
+         Expects properties: rawEvent, retryCount, lastError, correlationId -->
+    <filter xpath="${integer(properties.synapse.retryCount) &lt; configs.loan_max_retries}">
+        <then>
+            <variable name="nextRetryCount" type="INTEGER" expression="${integer(properties.synapse.retryCount) + 1}"/>
+            <log category="WARN">
+                <message>[LoanApplicationConsumer] LoansEligibilityAPI unavailable, scheduling retry ${vars.nextRetryCount} of ${configs.loan_max_retries} in ${configs.loan_retry_ttl_ms}ms | correlationId=${properties.synapse.correlationId} | lastError=${properties.synapse.lastError}</message>
+            </log>
+
+            <!-- put the original text back as the body -->
+            <payloadFactory media-type="text">
+                <format>${properties.synapse.rawEvent}</format>
+            </payloadFactory>
+            <property name="messageType" value="text/plain" scope="axis2"/>
+
+            <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+            <header name="correlationId" scope="transport" expression="${properties.synapse.correlationId}"/>
+            <header name="retryCount" scope="transport" expression="${vars.nextRetryCount}"/>
+            <header name="lastError" scope="transport" expression="${properties.synapse.lastError}"/>
+
+            <!-- message expires (and goes back to the main queue) after this many ms.
+                 Must be STRING or INTEGER - the JMS sender silently ignores a LONG -->
+            <property name="JMS_TIME_TO_LIVE" scope="axis2" type="STRING" expression="${configs.loan_retry_ttl_ms}"/>
+            <property name="OUT_ONLY" value="true"/>
+            <call>
+                <endpoint key="LoanApplicationsRetryQueueEP"/>
+            </call>
+            <drop/>
+        </then>
+        <else>
+            <property name="errorStage" value="retries-exhausted"/>
+            <property name="errorReason" scope="default" type="STRING"
+                      expression="${'LoansEligibilityAPI still unavailable after ' + string(properties.synapse.retryCount) + ' retries. Last error: ' + properties.synapse.lastError}"/>
+            <sequence key="LoanApplicationDLQSeq"/>
+        </else>
+    </filter>
+</sequence>

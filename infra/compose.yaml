@@ -70,11 +70,15 @@ services:
       ACTIVEMQ_CONNECTION_PASSWORD: ${AMQ_PASSWORD:-admin}
       # the image's own ACTIVEMQ_OPTS keeps the console reachable; we add the heap size
       ACTIVEMQ_OPTS: "${AMQ_JAVA_MEMORY:--Xms64m -Xmx384m} -Djetty.host=0.0.0.0"
+    # start with our config (default config + the loan-application retry rule).
+    # See activemq/jamii-activemq.xml for why it isn't mounted over activemq.xml
+    command: ["activemq", "console", "xbean:file:/opt/apache-activemq/conf/jamii-activemq.xml"]
     ports:
       - "${AMQ_PORT_OPENWIRE:-61616}:61616"
       - "${AMQ_PORT_CONSOLE:-8161}:8161"
     volumes:
       - amq-data:/opt/apache-activemq/data
+      - ./activemq/jamii-activemq.xml:/opt/apache-activemq/conf/jamii-activemq.xml:ro
     mem_limit: ${AMQ_MEM_LIMIT:-600m}
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/61616'"]
@@ -103,6 +107,10 @@ services:
       ACTIVEMQ_CONNECTION_PASSWORD: ${AMQ_PASSWORD:-admin}
       # read by CustomerProxy as ${configs.reqres_api_key}; set REQRES_API_KEY in .env
       reqres_api_key: ${REQRES_API_KEY:-}
+      # read by LoanApplicationConsumer (queue consumer) as ${configs.*}
+      loans_eligibility_url: ${LOANS_ELIGIBILITY_URL:-http://localhost:8290/loans/eligibility}
+      loan_max_retries: ${LOAN_MAX_RETRIES:-3}
+      loan_retry_ttl_ms: ${LOAN_RETRY_TTL_MS:-60000}
     ports:
       - "${MI_PORT_HTTP:-8290}:8290"
       - "${MI_PORT_HTTPS:-8253}:8253"

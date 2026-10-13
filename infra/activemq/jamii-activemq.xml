@@ -1,0 +1,107 @@
+<!--
+    Jamii ActiveMQ broker config = the image's default activemq.xml plus ONE addition:
+    the delayed-retry rule for LoanApplicationsRetryQueue (see destinationPolicy below).
+
+    compose.yaml mounts this file next to the default one and starts the broker with
+    `activemq console xbean:file:.../jamii-activemq.xml`. We don't overwrite activemq.xml
+    itself because the image's entrypoint edits that file on startup (it injects the
+    login plugin). The same login plugin is already included at the bottom of this file.
+-->
+<beans
+  xmlns="http://www.springframework.org/schema/beans"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+  http://activemq.apache.org/schema/core http://activemq.apache.org/schema/core/activemq-core.xsd">
+
+    <!-- ${activemq.username} / ${activemq.password} come from here (set from ACTIVEMQ_CONNECTION_USER/PASSWORD) -->
+    <bean class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+        <property name="locations">
+            <value>file:${activemq.conf}/credentials.properties</value>
+        </property>
+    </bean>
+
+    <broker xmlns="http://activemq.apache.org/schema/core" brokerName="localhost" dataDirectory="${activemq.data}">
+
+        <destinationPolicy>
+            <policyMap>
+              <policyEntries>
+                <policyEntry topic=">">
+                  <pendingMessageLimitStrategy>
+                    <constantPendingMessageLimitStrategy limit="1000"/>
+                  </pendingMessageLimitStrategy>
+                </policyEntry>
+
+                <!-- =============================================================
+                     Delayed retry for loan applications.
+                     Nothing consumes LoanApplicationsRetryQueue. MI puts a message
+                     there with a time-to-live (60s by default). When it expires,
+                     ActiveMQ "dead-letters" it - and for this queue the dead-letter
+                     destination is the MAIN queue, so the message goes back to
+                     LoanApplicationsQueue and MI processes it again.
+                       expireMessagesPeriod = how often the broker checks for expired
+                                              messages (5s, so the delay is ~60-65s)
+                       processExpired       = also dead-letter expired messages
+                       expiration="0"       = the moved copy never expires
+                     ============================================================= -->
+                <policyEntry queue="LoanApplicationsRetryQueue" expireMessagesPeriod="5000">
+                  <deadLetterStrategy>
+                    <sharedDeadLetterStrategy processExpired="true" expiration="0">
+                      <deadLetterQueue>
+                        <queue physicalName="LoanApplicationsQueue"/>
+                      </deadLetterQueue>
+                    </sharedDeadLetterStrategy>
+                  </deadLetterStrategy>
+                </policyEntry>
+              </policyEntries>
+            </policyMap>
+        </destinationPolicy>
+
+        <managementContext>
+            <managementContext createConnector="false"/>
+        </managementContext>
+
+        <persistenceAdapter>
+            <kahaDB directory="${activemq.data}/kahadb"/>
+        </persistenceAdapter>
+
+        <systemUsage>
+            <systemUsage>
+                <memoryUsage>
+                    <memoryUsage percentOfJvmHeap="70"/>
+                </memoryUsage>
+                <storeUsage>
+                    <storeUsage limit="100 gb"/>
+                </storeUsage>
+                <tempUsage>
+                    <tempUsage limit="50 gb"/>
+                </tempUsage>
+            </systemUsage>
+        </systemUsage>
+
+        <transportConnectors>
+            <!-- DOS protection, limit concurrent connections to 1000 and frame size to 100MB -->
+            <transportConnector name="openwire" uri="tcp://0.0.0.0:61616?maximumConnections=1000&amp;wireFormat.maxFrameSize=104857600"/>
+            <transportConnector name="amqp" uri="amqp://0.0.0.0:5672?maximumConnections=1000&amp;wireFormat.maxFrameSize=104857600"/>
+            <transportConnector name="stomp" uri="stomp://0.0.0.0:61613?maximumConnections=1000&amp;wireFormat.maxFrameSize=104857600"/>
+            <transportConnector name="mqtt" uri="mqtt://0.0.0.0:1883?maximumConnections=1000&amp;wireFormat.maxFrameSize=104857600"/>
+            <transportConnector name="ws" uri="ws://0.0.0.0:61614?maximumConnections=1000&amp;wireFormat.maxFrameSize=104857600"/>
+        </transportConnectors>
+
+        <!-- destroy the spring context on shutdown to stop jetty -->
+        <shutdownHooks>
+            <bean xmlns="http://www.springframework.org/schema/beans" class="org.apache.activemq.hooks.SpringContextHook"/>
+        </shutdownHooks>
+
+        <!-- broker login (MI connects with these) -->
+        <plugins>
+            <simpleAuthenticationPlugin>
+                <users>
+                    <authenticationUser username="${activemq.username}" password="${activemq.password}"/>
+                </users>
+            </simpleAuthenticationPlugin>
+        </plugins>
+    </broker>
+
+    <!-- web console (http://localhost:8161/admin) and the REST API used by send-test-events.ps1 -->
+    <import resource="jetty.xml"/>
+</beans>

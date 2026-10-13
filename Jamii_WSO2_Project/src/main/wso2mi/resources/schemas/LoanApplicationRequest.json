@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "title": "LoanApplicationRequest",
+  "description": "Body of POST /applications/loan-applications (LoanApplicationAPI). The API adds eventId + eventType and publishes it to LoanApplicationsQueue as a LoanApplicationEvent. Stricter than the event schema (enums), so callers get a 400 straight away",
+  "type": "object",
+  "required": ["customer", "employment", "loan"],
+  "properties": {
+    "customer": {
+      "type": "object",
+      "required": ["reference", "firstName", "lastName", "nationalIdLastFour", "kraPin", "dateOfBirth",
+                   "mobileNumber", "county"],
+      "properties": {
+        "reference": { "type": "string", "minLength": 1 },
+        "firstName": { "type": "string", "minLength": 1 },
+        "lastName": { "type": "string", "minLength": 1 },
+        "nationalIdLastFour": { "type": "string", "pattern": "^[0-9]{4}$" },
+        "kraPin": { "type": "string", "minLength": 1 },
+        "dateOfBirth": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "mobileNumber": { "type": "string", "minLength": 1 },
+        "county": { "type": "string", "minLength": 1 }
+      }
+    },
+    "employment": {
+      "type": "object",
+      "required": ["type", "employer", "monthsEmployed", "grossIncome", "netIncome"],
+      "properties": {
+        "type": { "type": "string", "enum": ["SALARIED", "SELF_EMPLOYED", "CASUAL", "UNEMPLOYED"] },
+        "employer": { "type": "string", "minLength": 1 },
+        "monthsEmployed": { "type": "integer", "minimum": 0 },
+        "grossIncome": { "type": "number", "minimum": 0 },
+        "netIncome": { "type": "number", "minimum": 0 }
+      }
+    },
+    "loan": {
+      "type": "object",
+      "required": ["productCode", "amount", "tenorMonths", "purpose", "repaymentMethod", "existingMonthlyDebt"],
+      "properties": {
+        "productCode": { "type": "string", "minLength": 1 },
+        "amount": { "type": "number", "minimum": 1 },
+        "tenorMonths": { "type": "integer", "minimum": 1 },
+        "purpose": { "type": "string" },
+        "repaymentMethod": { "type": "string", "enum": ["MPESA", "BANK_TRANSFER", "CHECK_OFF", "STANDING_ORDER"] },
+        "existingMonthlyDebt": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}

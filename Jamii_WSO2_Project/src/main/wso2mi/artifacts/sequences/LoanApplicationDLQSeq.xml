@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sequence xmlns="http://ws.apache.org/ns/synapse" name="LoanApplicationDLQSeq" trace="disable">
+    <!-- Parks a loan application event on LoanApplicationsDLQ so it is never silently dropped.
+         The ORIGINAL message body is sent unchanged (so it can be fixed and replayed from the
+         ActiveMQ console) and the reason travels as JMS properties.
+         Expects properties: rawEvent, errorStage, errorReason, retryCount, correlationId -->
+    <property name="failedAt" scope="default" type="STRING"
+              expression="get-property('SYSTEM_DATE', &quot;yyyy-MM-dd'T'HH:mm:ss.SSSXXX&quot;)"/>
+    <log category="ERROR">
+        <message>[LoanApplicationConsumer] Sending event to LoanApplicationsDLQ | correlationId=${properties.synapse.correlationId} | errorStage=${properties.synapse.errorStage} | retryCount=${properties.synapse.retryCount} | errorReason=${properties.synapse.errorReason}</message>
+    </log>
+
+    <!-- put the original text back as the body -->
+    <payloadFactory media-type="text">
+        <format>${properties.synapse.rawEvent}</format>
+    </payloadFactory>
+    <property name="messageType" value="text/plain" scope="axis2"/>
+
+    <!-- only our own JMS properties, nothing left over from the incoming message or the API call -->
+    <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+    <header name="correlationId" scope="transport" expression="${properties.synapse.correlationId}"/>
+    <header name="errorStage" scope="transport" expression="${properties.synapse.errorStage}"/>
+    <header name="errorReason" scope="transport" expression="${properties.synapse.errorReason}"/>
+    <header name="retryCount" scope="transport" expression="${properties.synapse.retryCount}"/>
+    <header name="failedAt" scope="transport" expression="${properties.synapse.failedAt}"/>
+
+    <property name="OUT_ONLY" value="true"/>
+    <call>
+        <endpoint key="LoanApplicationsDLQEP"/>
+    </call>
+    <drop/>
+</sequence>

@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<proxy xmlns="http://ws.apache.org/ns/synapse" name="LoanApplicationConsumer" startOnLoad="true" transports="jms">
+    <!-- Consumes LoanApplicationSubmitted events from the ActiveMQ queue LoanApplicationsQueue,
+         transforms each one into a LoansEligibilityAPI request, calls the API and publishes the result
+         to LoanDecisionsQueue.
+
+           broken JSON / fails schema    -> LoanApplicationsDLQ  (errorStage=validation)
+           API answers 4xx               -> LoanApplicationsDLQ  (errorStage=api-rejected)
+           API down / timeout / 5xx      -> LoanApplicationsRetryQueue, back here after ~60s,
+                                            LoanApplicationsDLQ after loan_max_retries tries (errorStage=retries-exhausted)
+           any other unexpected error    -> LoanApplicationsDLQ  (errorStage=processing-error) -->
+    <target>
+        <inSequence>
+            <property name="artifactName" scope="default" type="STRING" value="LoanApplicationConsumer"/>
+            <!-- until we have the eventId, the JMS message ID is the best ID for log lines -->
+            <property name="correlationId" scope="default" type="STRING" expression="get-property('MessageID')"/>
+            <property name="requestTimestamp" scope="default" type="STRING"
+                      expression="get-property('SYSTEM_DATE', &quot;yyyy-MM-dd'T'HH:mm:ss.SSSXXX&quot;)"/>
+            <!-- 0 for a new event, otherwise the count set by LoanApplicationRetrySeq -->
+            <property name="retryCount" scope="default" type="STRING"
+                      expression="${exists(headers[&quot;retryCount&quot;]) ? headers[&quot;retryCount&quot;] : '0'}"/>
+            <property name="processingStage" value="parsing"/>
+
+            <!-- The queue is read as plain text (see transport.jms.ContentType below), so a broken message
+                 can't fail before we've kept a copy. rawEvent is what gets sent on to the DLQ / retry queue -->
+            <property name="rawEvent" scope="default" type="STRING" expression="string($body/*[1])"/>
+            <log category="INFO">
+                <message>[LoanApplicationConsumer] Event received | correlationId=${properties.synapse.correlationId} | retryCount=${properties.synapse.retryCount}</message>
+            </log>
+
+            <!-- 1. is it JSON at all? -->
+            <script language="js"><![CDATA[
+                try {
+                    mc.setPayloadJSON(JSON.parse(mc.getProperty('rawEvent')));
+                    mc.setProperty('parseOk', 'true');
+                } catch (e) {
+                    mc.setProperty('parseOk', 'false');
+                    mc.setProperty('parseError', '' + e.message);
+                }
+            ]]></script>
+            <filter source="get-property('parseOk')" regex="true">
+                <then/>
+                <else>
+                    <property name="errorStage" value="validation"/>
+                    <property name="errorReason" scope="default" type="STRING"
+                              expression="${'Message body is not valid JSON: ' + properties.synapse.parseError}"/>
+                    <sequence key="LoanApplicationDLQSeq"/>
+                </else>
+            </filter>
+            <property name="messageType" value="application/json" scope="axis2"/>
+            <property name="ContentType" value="application/json" scope="axis2"/>
+
+            <!-- 2. is it a valid LoanApplicationSubmitted event? (schemas/LoanApplicationEvent.json) -->
+            <property name="processingStage" value="validating"/>
+            <validate>
+                <schema key="gov:mi-resources/schemas/LoanApplicationEvent.json"/>
+                <on-fail>
+                    <property name="errorStage" value="validation"/>
+                    <property name="errorReason" scope="default" type="STRING"
+                              expression="${'Event failed schema validation: ' + properties.synapse.ERROR_MESSAGE}"/>
+                    <sequence key="LoanApplicationDLQSeq"/>
+                </on-fail>
+            </validate>
+
+            <!-- from here on the eventId is the correlation ID (also sent to the API as X-Correlation-ID) -->
+            <property name="correlationId" scope="default" type="STRING" expression="${payload.eventId}"/>
+            <variable name="eventId" type="STRING" expression="${payload.eventId}"/>
+            <variable name="customerReference" type="STRING" expression="${payload.customer.reference}"/>
+            <log category="INFO">
+                <message>[LoanApplicationConsumer] Event valid, calling LoansEligibilityAPI | correlationId=${properties.synapse.correlationId} | retryCount=${properties.synapse.retryCount}</message>
+            </log>
+
+            <!-- 3. transform: short flat event -> full LoansEligibilityAPI request.
+                    Fields the event doesn't carry get safe defaults (KES, resident, unverified income, no other debts) -->
+            <property name="processingStage" value="transforming"/>
+            <payloadFactory media-type="json">
+                <format>{
+    "channelId": "QUEUE",
+    "applicant": {
+        "customerReference": "${payload.customer.reference}",
+        "firstName": "${payload.customer.firstName}",
+        "lastName": "${payload.customer.lastName}",
+        "nationalIdLastFour": "${payload.customer.nationalIdLastFour}",
+        "kraPin": "${payload.customer.kraPin}",
+        "dateOfBirth": "${payload.customer.dateOfBirth}",
+        "mobileNumber": "${payload.customer.mobileNumber}",
+        "county": "${payload.customer.county}",
+        "residencyStatus": "RESIDENT"
+    },
+    "employmentDetails": {
+        "employmentType": "${payload.employment.type}",
+        "employerOrBusinessName": "${payload.employment.employer}",
+        "monthsWithEmployerOrBusiness": ${payload.employment.monthsEmployed},
+        "monthlyGrossIncome": { "amount": ${payload.employment.grossIncome}, "currency": "KES" },
+        "monthlyNetIncome": { "amount": ${payload.employment.netIncome}, "currency": "KES" },
+        "incomeVerified": false
+    },
+    "loanRequest": {
+        "productCode": "${payload.loan.productCode}",
+        "requestedAmount": { "amount": ${payload.loan.amount}, "currency": "KES" },
+        "requestedTenorMonths": ${payload.loan.tenorMonths},
+        "purpose": "${payload.loan.purpose}",
+        "repaymentMethod": "${payload.loan.repaymentMethod}",
+        "existingObligations": {
+            "monthlyLoanRepayments": { "amount": ${payload.loan.existingMonthlyDebt}, "currency": "KES" },
+            "monthlyMobileLoanRepayments": { "amount": 0, "currency": "KES" },
+            "monthlyOtherDebtPayments": { "amount": 0, "currency": "KES" },
+            "hasOverdueFacility": false,
+            "daysPastDue": 0
+        }
+    },
+    "consentToCreditAssessment": true
+}</format>
+            </payloadFactory>
+
+            <!-- 4. call LoansEligibilityAPI (Part 1 API) -->
+            <property name="uri.var.loansEligibilityUrl" scope="default" type="STRING" expression="${configs.loans_eligibility_url}"/>
+            <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+            <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
+            <property name="processingStage" value="calling-api"/>
+            <call>
+                <endpoint key="LoansEligibilityInternalEP"/>
+            </call>
+            <property name="processingStage" value="handling-response"/>
+            <property name="apiStatus" scope="default" type="STRING" expression="$axis2:HTTP_SC"/>
+            <log category="INFO">
+                <message>[LoanApplicationConsumer] LoansEligibilityAPI responded | correlationId=${properties.synapse.correlationId} | apiStatus=${properties.synapse.apiStatus}</message>
+            </log>
+
+            <switch source="get-property('apiStatus')">
+                <!-- success -->
+                <case regex="200">
+                    <!-- 5. publish a short decision event. Sent as a JMS TextMessage so it is readable in the console -->
+                    <payloadFactory media-type="text">
+                        <format>{"eventId":"${vars.eventId}","eventType":"LoanEligibilityDecided","customerReference":"${vars.customerReference}","status":"${payload.status}","riskBand":"${payload.riskBand}","indicativeAmount":${payload.indicativeAmount.amount},"currency":"${payload.indicativeAmount.currency}","monthlyInstalment":${payload.instalment.amount},"tenorMonths":${payload.tenorMonths},"decidedAt":"${payload.timestamp}"}</format>
+                    </payloadFactory>
+                    <property name="messageType" value="text/plain" scope="axis2"/>
+                    <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+                    <header name="correlationId" scope="transport" expression="${properties.synapse.correlationId}"/>
+                    <header name="eventType" scope="transport" value="LoanEligibilityDecided"/>
+                    <header name="contentType" scope="transport" value="application/json"/>
+                    <property name="OUT_ONLY" value="true"/>
+                    <call>
+                        <endpoint key="LoanDecisionsQueueEP"/>
+                    </call>
+                    <log category="INFO">
+                        <message>[LoanApplicationConsumer] Decision published to LoanDecisionsQueue | correlationId=${properties.synapse.correlationId}</message>
+                    </log>
+                    <drop/>
+                </case>
+                <!-- the API rejected the data itself: retrying the same message would fail the same way -->
+                <case regex="4[0-9][0-9]">
+                    <property name="errorStage" value="api-rejected"/>
+                    <property name="errorReason" scope="default" type="STRING"
+                              expression="${'LoansEligibilityAPI returned HTTP ' + string(properties.synapse.apiStatus) + ': ' + (exists(payload.error) ? payload.error : 'no details')}"/>
+                    <sequence key="LoanApplicationDLQSeq"/>
+                </case>
+                <!-- 5xx (or anything unexpected): the API/backend may recover, so retry later -->
+                <default>
+                    <property name="lastError" scope="default" type="STRING"
+                              expression="${'LoansEligibilityAPI returned HTTP ' + string(properties.synapse.apiStatus)}"/>
+                    <sequence key="LoanApplicationRetrySeq"/>
+                </default>
+            </switch>
+        </inSequence>
+        <faultSequence>
+            <!-- connection refused / timeout while calling the API -> retry later; anything else -> DLQ -->
+            <filter source="get-property('processingStage')" regex="calling-api">
+                <then>
+                    <property name="lastError" scope="default" type="STRING"
+                              expression="${'Call to LoansEligibilityAPI failed (' + string(properties.synapse.ERROR_CODE) + '): ' + properties.synapse.ERROR_MESSAGE}"/>
+                    <sequence key="LoanApplicationRetrySeq"/>
+                </then>
+                <else>
+                    <property name="errorStage" value="processing-error"/>
+                    <property name="errorReason" scope="default" type="STRING"
+                              expression="${'Unexpected error while ' + properties.synapse.processingStage + ': ' + properties.synapse.ERROR_MESSAGE}"/>
+                    <sequence key="LoanApplicationDLQSeq"/>
+                </else>
+            </filter>
+        </faultSequence>
+    </target>
+    <parameter name="transport.jms.ConnectionFactory">myQueueListener</parameter>
+    <parameter name="transport.jms.Destination">LoanApplicationsQueue</parameter>
+    <parameter name="transport.jms.DestinationType">queue</parameter>
+    <!-- always read the body as plain text, whatever content type the producer claims -->
+    <parameter name="transport.jms.ContentType">
+        <rules>
+            <default>text/plain</default>
+        </rules>
+    </parameter>
+</proxy>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<endpoint xmlns="http://ws.apache.org/ns/synapse" name="LoanDecisionsQueueEP">
+    <!-- JMS queue LoanDecisionsQueue: output: one LoanEligibilityDecided event per successfully processed application.
+         Uses the "myQueueSender" connection factory from deployment.toml (broker URL + login live there) -->
+    <address uri="jms:/LoanDecisionsQueue?transport.jms.ConnectionFactory=myQueueSender&amp;transport.jms.DestinationType=queue"/>
+</endpoint>

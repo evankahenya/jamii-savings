@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<api xmlns="http://ws.apache.org/ns/synapse" name="LoanApplicationAPI" context="/applications">
+    <!-- Entry point for loan applications. Validates the request, wraps it in a LoanApplicationSubmitted
+         event and publishes it to LoanApplicationsQueue, then answers 202 straight away.
+         The eligibility check happens later in LoanApplicationConsumer (see docs/loan-application-queue.md) -->
+    <resource methods="POST" uri-template="/loan-applications">
+        <inSequence>
+            <property name="artifactName" scope="default" type="STRING" value="LoanApplicationAPI"/>
+            <sequence key="CorrelationIdSeq"/>
+            <log category="INFO">
+                <message>[LoanApplicationAPI] Request received | correlationId=${properties.synapse.correlationId}</message>
+            </log>
+
+            <!-- only accept JSON requests -->
+            <filter source="$trp:Content-Type" regex="application/json.*">
+                <then/>
+                <else>
+                    <log category="WARN">
+                        <message>[LoanApplicationAPI] Request is not JSON | correlationId=${properties.synapse.correlationId} | contentType=${headers["Content-Type"]}</message>
+                    </log>
+                    <property name="errorStatus" value="415"/>
+                    <property name="errorMessage" value="Unsupported body type. Request must be application/json"/>
+                    <sequence key="ErrorResponseSeq"/>
+                </else>
+            </filter>
+
+            <!-- broken JSON makes validate throw -> faultSequence answers 400 when this flag is set -->
+            <property name="checkingRequest" value="true"/>
+            <validate>
+                <schema key="gov:mi-resources/schemas/LoanApplicationRequest.json"/>
+                <on-fail>
+                    <log category="WARN">
+                        <message>[LoanApplicationAPI] Validation failed | correlationId=${properties.synapse.correlationId} | reason=${properties.synapse.ERROR_MESSAGE}</message>
+                    </log>
+                    <property name="errorStatus" value="400"/>
+                    <property name="errorMessage" value="Invalid request. One or more fields are missing or invalid"/>
+                    <!-- the schema error text contains double quotes, which would break the JSON error body -->
+                    <property name="errorDetails" expression="${replace(properties.synapse.ERROR_MESSAGE, '&quot;', &quot;'&quot;)}"/>
+                    <sequence key="ErrorResponseSeq"/>
+                </on-fail>
+            </validate>
+            <property name="checkingRequest" value="false"/>
+
+            <!-- the correlation ID becomes the eventId / applicationId, so one ID is used end to end.
+                 Sent as text so it shows up as a readable TextMessage in the ActiveMQ console -->
+            <payloadFactory media-type="text">
+                <format>{"eventId":"${properties.synapse.correlationId}","eventType":"LoanApplicationSubmitted","submittedAt":"${properties.synapse.requestTimestamp}","customer":${payload.customer},"employment":${payload.employment},"loan":${payload.loan}}</format>
+            </payloadFactory>
+            <property name="messageType" value="text/plain" scope="axis2"/>
+            <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+            <header name="correlationId" scope="transport" expression="${properties.synapse.correlationId}"/>
+            <header name="eventType" scope="transport" value="LoanApplicationSubmitted"/>
+            <header name="contentType" scope="transport" value="application/json"/>
+
+            <property name="publishing" value="true"/>
+            <property name="OUT_ONLY" value="true"/>
+            <call>
+                <endpoint key="LoanApplicationsQueueEP"/>
+            </call>
+            <property name="OUT_ONLY" action="remove"/>
+            <property name="publishing" value="false"/>
+            <log category="INFO">
+                <message>[LoanApplicationAPI] Application queued on LoanApplicationsQueue | correlationId=${properties.synapse.correlationId}</message>
+            </log>
+
+            <!-- 202: accepted for processing, the decision is published later on LoanDecisionsQueue -->
+            <payloadFactory media-type="json">
+                <format>{"applicationId":"${properties.synapse.correlationId}","status":"RECEIVED","message":"Loan application received. Eligibility will be checked shortly.","timestamp":"${properties.synapse.requestTimestamp}"}</format>
+            </payloadFactory>
+            <property name="messageType" value="application/json" scope="axis2"/>
+            <property name="HTTP_SC" value="202" scope="axis2"/>
+            <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+            <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
+            <respond/>
+        </inSequence>
+        <faultSequence>
+            <filter source="get-property('checkingRequest')" regex="true">
+                <then>
+                    <log category="WARN">
+                        <message>[LoanApplicationAPI] Request body is not valid JSON | correlationId=${properties.synapse.correlationId} | error=${properties.synapse.ERROR_MESSAGE}</message>
+                    </log>
+                    <property name="errorStatus" value="400"/>
+                    <property name="errorMessage" value="Invalid request. Body is not valid JSON"/>
+                    <sequence key="ErrorResponseSeq"/>
+                </then>
+            </filter>
+            <!-- broker down / unreachable: nothing was queued, tell the caller to try again -->
+            <filter source="get-property('publishing')" regex="true">
+                <then>
+                    <log category="ERROR">
+                        <message>[LoanApplicationAPI] Could not publish to LoanApplicationsQueue | correlationId=${properties.synapse.correlationId} | error=${properties.synapse.ERROR_MESSAGE}</message>
+                    </log>
+                    <property name="OUT_ONLY" action="remove"/>
+                    <property name="errorStatus" value="503"/>
+                    <property name="errorMessage" value="Service unavailable. The application could not be queued, please try again"/>
+                    <sequence key="ErrorResponseSeq"/>
+                </then>
+            </filter>
+            <sequence key="GatewayFaultSeq"/>
+        </faultSequence>
+    </resource>
+
+    <!-- only POST is allowed -->
+    <resource methods="GET PUT DELETE PATCH" uri-template="/loan-applications">
+        <inSequence>
+            <sequence key="CorrelationIdSeq"/>
+            <property name="errorStatus" value="405"/>
+            <property name="errorMessage" value="Method not allowed. Use POST"/>
+            <property name="NO_ENTITY_BODY" action="remove" scope="axis2"/>
+            <sequence key="ErrorResponseSeq"/>
+        </inSequence>
+    </resource>
+</api>

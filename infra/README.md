@@ -50,6 +50,11 @@ reqres.in, copy `.env.example` to `.env` and set `REQRES_API_KEY`.
 client jars are copied from the broker image into MI, so client and broker versions always
 match (see `mi/Dockerfile`).
 
+**Loan application queues:** the broker starts with `activemq/jamii-activemq.xml`, which is the
+default config plus one rule: expired messages on `LoanApplicationsRetryQueue` go back to
+`LoanApplicationsQueue`, which gives a delayed retry. Send test events with
+`.\activemq\send-test-events.ps1`. The full design is in [../docs/loan-application-queue.md](../docs/loan-application-queue.md).
+
 ## Environments
 
 There is **one** `compose.yaml`. Every value in it has a **dev** default, and an env file
