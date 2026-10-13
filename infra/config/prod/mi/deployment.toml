@@ -1,9 +1,3 @@
-# =====================================================================
-# MI 4.6 config for the PROD *container* (PLACEHOLDER - not run on this PC).
-# Based on Jamii_WSO2_Project/deployment/deployment.toml (used by VS Code),
-# with container-specific changes marked  >>> CONTAINER <<<
-# If you change masking/passthru settings in the project file, copy them here too.
-# =====================================================================
 
 [server]
 hostname = "localhost"
