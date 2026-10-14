@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <endpoint xmlns="http://ws.apache.org/ns/synapse" name="AccountBalanceAPIEP">
-    <!-- AccountBalanceAPI on this server. uri.var.accountNumber is set by CustomerDashboardAPI for each account -->
+    <!-- AccountBalanceAPI on this server. uri.var.accountNumber is set by the CustomersAPI dashboard resource for each account -->
     <http method="get" uri-template="http://localhost:8290/accounts/{uri.var.accountNumber}/balance">
         <timeout>
             <duration>10000</duration>

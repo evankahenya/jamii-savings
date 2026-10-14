@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <endpoint xmlns="http://ws.apache.org/ns/synapse" name="LoanEligibilitySoapEP">
-    <!-- SOAP 1.1 loan eligibility backend. SOAPAction is set by LoansEligibilityAPI -->
+    <!-- SOAP 1.1 loan eligibility backend. SOAPAction is set by LoansAPI /eligibility -->
     <address uri="https://sm8e2e62d0c0ba.free.beeceptor.com/" format="soap11">
         <timeout>
             <duration>10000</duration>

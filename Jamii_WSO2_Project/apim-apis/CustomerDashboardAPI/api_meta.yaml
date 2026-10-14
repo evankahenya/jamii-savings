@@ -1,7 +1,0 @@
-name: CustomerDashboardAPI
-version: 1.0.0
-deploy:
-  import:
-    preserveProvider: true
-    update: true
-    rotateRevision: true

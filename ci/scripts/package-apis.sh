@@ -16,8 +16,11 @@ for api in $(api_names); do
   dst="$STAGE/$api"
   mkdir -p "$dst/Definitions" "$dst/Policies"
 
-  cp "$src/api.yaml" "$src/api_meta.yaml" "$src/deployment_environments.yaml" "$dst/"
-  cp "$OAS_DIR/$api.yaml" "$dst/Definitions/swagger.yaml"
+  # copied with Windows line endings (\r) removed - files edited on Windows may have them
+  for f in api.yaml api_meta.yaml deployment_environments.yaml; do
+    sed 's/\r$//' "$src/$f" > "$dst/$f"
+  done
+  sed 's/\r$//' "$OAS_DIR/$api.yaml" > "$dst/Definitions/swagger.yaml"
 
   # Policies: APIM expects <name>_<version>.yaml (wrapped as an operation_policy_specification) + .j2
   # (sed 's/\r$//' strips Windows line endings - the policy files are edited on Windows)
@@ -35,9 +38,18 @@ for api in $(api_names); do
   done
 
   apictl bundle -s "$dst" -d "$OUT" >/dev/null
-  cp "$src/params.yaml" "$OUT/$api.params.yaml"
+  sed 's/\r$//' "$src/params.yaml" > "$OUT/$api.params.yaml"
   ok "$(ls "$OUT"/"$api"_*.zip | xargs -n1 basename)"
 done
 
 rm -rf "$STAGE"
 log "Packaged $(ls "$OUT"/*.zip | wc -l) API archive(s) into ${OUT#"$REPO_ROOT"/}"
+
+# Custom rate-limiting tiers - imported by deploy.sh before the APIs that use them
+TIERS_OUT="$DIST_DIR/rate-limiting-policies"
+rm -rf "${TIERS_OUT:?}"; mkdir -p "$TIERS_OUT"
+for f in "$RATE_LIMIT_DIR"/*.yaml; do
+  [ -e "$f" ] || continue
+  sed 's/\r$//' "$f" > "$TIERS_OUT/$(basename "$f")"
+  ok "rate-limiting tier $(basename "$f" .yaml)"
+done

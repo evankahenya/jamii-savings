@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-04/schema#",
   "title": "LoanApplicationEvent",
-  "description": "Message on LoanApplicationsQueue. Only checks the STRUCTURE of the event - business rules (allowed products, repayment methods) are left to LoansEligibilityAPI",
+  "description": "Message on LoanApplicationsQueue. Only checks the STRUCTURE of the event - business rules (allowed products, repayment methods) are left to LoansAPI /eligibility",
   "type": "object",
   "required": ["eventId", "eventType", "customer", "employment", "loan"],
   "properties": {

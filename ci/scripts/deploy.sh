@@ -15,6 +15,7 @@
 # Required env: TARGET_ENV APIM_URL APIM_USER APIM_PASS MI_MGMT_URL MI_USER MI_PASS
 #               MI_URL GATEWAY_URL      (Jenkins sets these from ci/environments/*)
 # Optional:     STATE_DIR (where the last good CAR per env is kept)
+#               ENV_WAIT_SECONDS (how long to wait for MI/APIM to come up, default 1200)
 # =====================================================================
 . "$(dirname "$0")/common.sh"
 require_vars TARGET_ENV APIM_URL APIM_USER APIM_PASS MI_MGMT_URL MI_USER MI_PASS MI_URL GATEWAY_URL
@@ -90,13 +91,28 @@ for api in "${APIS[@]}"; do
   [ -f "$DIST_DIR/apis/${api}_1.0.0.zip" ] || { echo "Missing package for $api - run package-apis.sh" >&2; exit 1; }
 done
 ok "API packages: ${APIS[*]}"
-mi_login;      ok "MI management API: $MI_MGMT_URL"
-apictl_setup;  ok "API Manager: $APIM_URL"
+# The environment may still be starting (e.g. Jenkins and the platform were started
+# together): wait for it instead of failing. APIM needs ~3 min; on a first-ever start
+# MI waits for the CAR build (~10 min), hence the generous default.
+ENV_WAIT_SECONDS=${ENV_WAIT_SECONDS:-1200}
+wait_until "MI management API at $MI_MGMT_URL" "$ENV_WAIT_SECONDS" mi_login || exit 1
+ok "MI management API: $MI_MGMT_URL"
+wait_until "API Manager at $APIM_URL" "$ENV_WAIT_SECONDS" apim_ready || exit 1
+ok "API Manager: $APIM_URL"
 rm -rf "${WORK:?}"; mkdir -p "$BACKUP" "$LAST_GOOD_DIR"
 
 # From here on, any failure rolls back what was already changed
 set -E
 trap 'on_error $LINENO' ERR
+
+# Custom tiers must exist before an API that uses them is imported. Importing them is
+# additive (create or update), and a tier no API uses is harmless, so a rollback leaves them.
+log "Custom rate-limiting tiers"
+for f in "$DIST_DIR"/rate-limiting-policies/*.yaml; do
+  [ -e "$f" ] || continue
+  apictl import policy rate-limiting -f "$f" -e "$TARGET_ENV" --update -k >/dev/null
+  ok "$(basename "$f" .yaml) created/updated"
+done
 
 log "Backing up current APIs from APIM"
 for api in "${APIS[@]}"; do

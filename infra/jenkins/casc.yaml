@@ -53,3 +53,4 @@ jobs:
           }
         }
       }
+      // The first build is started automatically by init.groovy.d/jamii-first-build.groovy

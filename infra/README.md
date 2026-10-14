@@ -24,11 +24,14 @@ a start takes about 2 min.
 | MI Management API | https://localhost:9164/management | admin / admin |
 | ActiveMQ console | http://localhost:8161/admin | admin / admin |
 
-Optional: to make `CustomerProxy` / `GetCustomerByID` / `CustomerDashboardAPI` reach
-reqres.in, copy `.env.example` to `.env` and set `REQRES_API_KEY`.
+The customer lookup and dashboard (`CustomerProxy` / `CustomersAPI`) call reqres.in. The
+project's shared reqres.in **public** key is already the default in `compose.yaml`, so they
+work with no setup. To use your own key instead, copy `.env.example` to `.env` and set
+`REQRES_API_KEY`.
 
-> The APIs only show up in **API Manager** after the Jenkins pipeline has run (or after you
-> import them yourself). `docker compose up` deploys the MI side only.
+> `docker compose up` deploys the MI side only. To get the APIs into **API Manager**, also
+> start Jenkins (`cd jenkins` then `docker compose up -d --build`). On its first start it
+> runs the pipeline by itself and deploys everything. See [Jenkins pipeline](#jenkins-pipeline).
 
 ---
 
@@ -96,12 +99,23 @@ docker compose up -d --build      # http://localhost:8081  (admin / admin)
 ```
 
 Jenkins comes up fully configured from code (`jenkins/casc.yaml`): no setup wizard, with
-credentials for dev and the **`jamii-api-deploy`** job already created. Open the job and
-click **Build with Parameters**.
+credentials for dev and the **`jamii-api-deploy`** job already created.
+
+**You don't have to click anything the first time.** On its first start Jenkins runs the
+pipeline once by itself (`jenkins/jamii-first-build.groovy`). If the platform is still
+starting, the deploy step waits for MI and API Manager to be ready (up to 20 min,
+`ENV_WAIT_SECONDS`), so you can start Jenkins right after `docker compose up -d`. A
+first run takes about 10 minutes (Maven downloads, then waiting for APIM). After that,
+all the APIs are live in MI and API Manager. Later Jenkins restarts don't redeploy. To
+deploy again, open the job and click **Build with Parameters**. To switch off the
+automatic first build, set `JAMII_AUTO_BUILD=false`.
 
 By default the job reads the repo mounted at `/repo`, so it **builds what is committed**
-on the `main` branch. To build from GitHub instead, set `JAMII_GIT_URL` (see
-`jenkins/compose.yaml`).
+on the `main` branch. It needs a real `git clone`, not a ZIP download. To build from
+GitHub instead, set `JAMII_GIT_URL` (see `jenkins/compose.yaml`).
+
+Works on Intel/AMD machines and on Apple Silicon Macs: the image downloads the `apictl`
+build that matches the machine's CPU.
 
 ### What the pipeline does (`Jenkinsfile` at the repo root)
 

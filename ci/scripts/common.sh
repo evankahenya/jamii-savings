@@ -6,6 +6,9 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MI_PROJECT="$REPO_ROOT/Jamii_WSO2_Project"
 APIM_APIS_DIR="$MI_PROJECT/apim-apis"
 APIM_POLICIES_DIR="$MI_PROJECT/apim-policies"
+RATE_LIMIT_DIR="$MI_PROJECT/apim-throttling-policies"   # custom rate-limiting tiers (apictl format)
+# API-level ("advanced") tiers every API Manager already has - no file needed for these
+BUILTIN_API_TIERS="Unlimited 10KPerMin 20KPerMin 50KPerMin"
 OAS_DIR="$MI_PROJECT/src/main/wso2mi/resources/api-definitions"
 MI_APIS_DIR="$MI_PROJECT/src/main/wso2mi/artifacts/apis"
 DIST_DIR="$REPO_ROOT/dist"
@@ -15,8 +18,21 @@ ok()   { printf '    \033[32mOK\033[0m  %s\n' "$*"; }
 warn() { printf '    \033[33mWARN\033[0m %s\n' "$*"; }
 fail() { printf '    \033[31mFAIL\033[0m %s\n' "$*" >&2; return 1; }
 
+# Reads "  <key>: value" from an apictl yaml file. Strips Windows line endings (\r):
+# files edited/checked out on Windows have them, and they'd end up inside the value.
+yaml_value() { sed -n "s/^  $2: *//p" "$1" | tr -d '\r' | head -1; }
+
 # The APIs this pipeline manages = one folder per API under apim-apis/
 api_names() { find "$APIM_APIS_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort; }
+
+wait_until() {  # wait_until <what> <timeout seconds> <command...>  - retries every 10s until the command succeeds
+  local what=$1 timeout=$2 waited=0; shift 2
+  until "$@" >/dev/null 2>&1; do
+    if [ "$waited" -ge "$timeout" ]; then fail "$what still not ready after ${timeout}s"; return 1; fi
+    [ $((waited % 60)) -eq 0 ] && echo "    ... waiting for $what (${waited}s so far)"
+    sleep 10; waited=$((waited + 10))
+  done
+}
 
 require_vars() {
   local v
@@ -104,6 +120,10 @@ apictl_setup() {  # registers + logs in apictl environment "$TARGET_ENV"
   apictl add env "$TARGET_ENV" --apim "$APIM_URL" >/dev/null
   printf '%s' "$APIM_PASS" | apictl login "$TARGET_ENV" -u "$APIM_USER" --password-stdin -k >/dev/null \
     || { fail "cannot log in to API Manager at $APIM_URL"; return 1; }
+}
+
+apim_ready() {  # APIM is up (health endpoint) AND accepts an apictl login
+  curl -skf --max-time 10 "$APIM_URL/services/Version" >/dev/null && apictl_setup
 }
 
 apim_api_exists() {  # apim_api_exists <name>   (the query is a partial match - grep -x makes it exact)

@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-04/schema#",
   "title": "LoanApplicationRequest",
-  "description": "Body of POST /applications/loan-applications (LoanApplicationAPI). The API adds eventId + eventType and publishes it to LoanApplicationsQueue as a LoanApplicationEvent. Stricter than the event schema (enums), so callers get a 400 straight away",
+  "description": "Body of POST /loans/applications (LoansAPI). The API adds eventId + eventType and publishes it to LoanApplicationsQueue as a LoanApplicationEvent. Stricter than the event schema (enums), so callers get a 400 straight away",
   "type": "object",
   "required": ["customer", "employment", "loan"],
   "properties": {

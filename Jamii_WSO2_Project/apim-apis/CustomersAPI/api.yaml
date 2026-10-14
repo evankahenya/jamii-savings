@@ -1,13 +1,13 @@
-# APIM definition of GetCustomerByID (apictl project format, APIM 4.7).
+# APIM definition of CustomersAPI (apictl project format, APIM 4.7).
 # The OpenAPI definition and the policies are NOT stored here - the pipeline copies them in
 # when packaging (from src/main/wso2mi/resources/api-definitions/ and apim-policies/),
 # so there is only one copy of each. Per-environment backend URLs are in params.yaml.
 type: api
 version: v4.7.0
 data:
-  name: GetCustomerByID
-  description: Looks up a customer record in the CRM (reqres.in) by customer ID.
-  context: /crm
+  name: CustomersAPI
+  description: Customer record from the CRM (GET /{customerId}) and a customer dashboard with all account balances (GET /{customerId}/dashboard).
+  context: /customers
   version: 1.0.0
   provider: admin
   lifeCycleStatus: PUBLISHED
@@ -23,12 +23,15 @@ data:
   - Silver
   - Bronze
   visibility: PUBLIC
+  # API-level rate limit shared by ALL callers: the reqres.in backend allows only 250
+  # requests/day. Custom policy defined in apim-throttling-policies/ReqRes.yaml
+  apiThrottlingPolicy: ReqRes
   endpointConfig:
     endpoint_type: http
     production_endpoints:
-      url: http://mi:8290/crm
+      url: http://mi:8290/customers
     sandbox_endpoints:
-      url: http://mi:8290/crm
+      url: http://mi:8290/customers
   endpointImplementationType: ENDPOINT
   # Applied to every operation of the API
   apiPolicies:

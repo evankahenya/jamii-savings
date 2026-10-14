@@ -1,4 +1,4 @@
-name: LoansEligibilityAPI
+name: LoansAPI
 version: 1.0.0
 deploy:
   import:

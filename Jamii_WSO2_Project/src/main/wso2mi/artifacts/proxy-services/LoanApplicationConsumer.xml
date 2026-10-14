@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <proxy xmlns="http://ws.apache.org/ns/synapse" name="LoanApplicationConsumer" startOnLoad="true" transports="jms">
     <!-- Consumes LoanApplicationSubmitted events from the ActiveMQ queue LoanApplicationsQueue,
-         transforms each one into a LoansEligibilityAPI request, calls the API and publishes the result
+         transforms each one into a LoansAPI /eligibility request, calls the API and publishes the result
          to LoanDecisionsQueue.
 
            broken JSON / fails schema    -> LoanApplicationsDLQ  (errorStage=validation)
@@ -67,10 +67,10 @@
             <variable name="eventId" type="STRING" expression="${payload.eventId}"/>
             <variable name="customerReference" type="STRING" expression="${payload.customer.reference}"/>
             <log category="INFO">
-                <message>[LoanApplicationConsumer] Event valid, calling LoansEligibilityAPI | correlationId=${properties.synapse.correlationId} | retryCount=${properties.synapse.retryCount}</message>
+                <message>[LoanApplicationConsumer] Event valid, calling LoansAPI /eligibility | correlationId=${properties.synapse.correlationId} | retryCount=${properties.synapse.retryCount}</message>
             </log>
 
-            <!-- 3. transform: short flat event -> full LoansEligibilityAPI request.
+            <!-- 3. transform: short flat event -> full LoansAPI /eligibility request.
                     Fields the event doesn't carry get safe defaults (KES, resident, unverified income, no other debts) -->
             <property name="processingStage" value="transforming"/>
             <payloadFactory media-type="json">
@@ -113,7 +113,7 @@
 }</format>
             </payloadFactory>
 
-            <!-- 4. call LoansEligibilityAPI (Part 1 API) -->
+            <!-- 4. call LoansAPI /eligibility (Part 1 API) -->
             <property name="uri.var.loansEligibilityUrl" scope="default" type="STRING" expression="${configs.loans_eligibility_url}"/>
             <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
             <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
@@ -124,7 +124,7 @@
             <property name="processingStage" value="handling-response"/>
             <property name="apiStatus" scope="default" type="STRING" expression="$axis2:HTTP_SC"/>
             <log category="INFO">
-                <message>[LoanApplicationConsumer] LoansEligibilityAPI responded | correlationId=${properties.synapse.correlationId} | apiStatus=${properties.synapse.apiStatus}</message>
+                <message>[LoanApplicationConsumer] LoansAPI /eligibility responded | correlationId=${properties.synapse.correlationId} | apiStatus=${properties.synapse.apiStatus}</message>
             </log>
 
             <switch source="get-property('apiStatus')">
@@ -152,13 +152,13 @@
                 <case regex="4[0-9][0-9]">
                     <property name="errorStage" value="api-rejected"/>
                     <property name="errorReason" scope="default" type="STRING"
-                              expression="${'LoansEligibilityAPI returned HTTP ' + string(properties.synapse.apiStatus) + ': ' + (exists(payload.error) ? payload.error : 'no details')}"/>
+                              expression="${'LoansAPI /eligibility returned HTTP ' + string(properties.synapse.apiStatus) + ': ' + (exists(payload.error) ? payload.error : 'no details')}"/>
                     <sequence key="LoanApplicationDLQSeq"/>
                 </case>
                 <!-- 5xx (or anything unexpected): the API/backend may recover, so retry later -->
                 <default>
                     <property name="lastError" scope="default" type="STRING"
-                              expression="${'LoansEligibilityAPI returned HTTP ' + string(properties.synapse.apiStatus)}"/>
+                              expression="${'LoansAPI /eligibility returned HTTP ' + string(properties.synapse.apiStatus)}"/>
                     <sequence key="LoanApplicationRetrySeq"/>
                 </default>
             </switch>
@@ -168,7 +168,7 @@
             <filter source="get-property('processingStage')" regex="calling-api">
                 <then>
                     <property name="lastError" scope="default" type="STRING"
-                              expression="${'Call to LoansEligibilityAPI failed (' + string(properties.synapse.ERROR_CODE) + '): ' + properties.synapse.ERROR_MESSAGE}"/>
+                              expression="${'Call to LoansAPI /eligibility failed (' + string(properties.synapse.ERROR_CODE) + '): ' + properties.synapse.ERROR_MESSAGE}"/>
                     <sequence key="LoanApplicationRetrySeq"/>
                 </then>
                 <else>

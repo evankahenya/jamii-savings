@@ -83,7 +83,7 @@ algorithm = "AES"
 # Jamii Savings DB - change url depending on your db file location
 [[datasource]]
 id = "JamiiDB"
-url = "jdbc:sqlite:C:/Users/Evans/Desktop/JamiiSavings/Jamii_db" 
+url = "jdbc:sqlite:C:/Users/Evans/Desktop/jamii/jamii-savings/Jamii_db"
 driver = "org.sqlite.JDBC"
 pool_options.maxActive = 10
 pool_options.testOnBorrow = true

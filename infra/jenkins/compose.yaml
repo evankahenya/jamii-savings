@@ -22,6 +22,8 @@ services:
       #   JAMII_GIT_URL=https://github.com/<you>/jamii-savings.git
       JAMII_GIT_URL: ${JAMII_GIT_URL:-file:///repo}
       JAMII_GIT_BRANCH: ${JAMII_GIT_BRANCH:-*/main}
+      # true = run the pipeline automatically the first time Jenkins starts (job never built yet)
+      JAMII_AUTO_BUILD: ${JAMII_AUTO_BUILD:-true}
       JENKINS_URL: http://localhost:${JENKINS_PORT:-8081}/
       JENKINS_ADMIN_USER: ${JENKINS_ADMIN_USER:-admin}
       JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:-admin}

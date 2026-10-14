@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <sequence xmlns="http://ws.apache.org/ns/synapse" name="LoanApplicationRetrySeq" trace="disable">
-    <!-- Delayed retry for when LoansEligibilityAPI is down / timing out / answering 5xx.
+    <!-- Delayed retry for when LoansAPI /eligibility is down / timing out / answering 5xx.
          The original event goes to LoanApplicationsRetryQueue with a time-to-live. Nothing reads
          that queue: when the TTL runs out ActiveMQ moves the message back to LoanApplicationsQueue
          (rule in infra/activemq/jamii-activemq.xml) and LoanApplicationConsumer tries again.
@@ -11,7 +11,7 @@
         <then>
             <variable name="nextRetryCount" type="INTEGER" expression="${integer(properties.synapse.retryCount) + 1}"/>
             <log category="WARN">
-                <message>[LoanApplicationConsumer] LoansEligibilityAPI unavailable, scheduling retry ${vars.nextRetryCount} of ${configs.loan_max_retries} in ${configs.loan_retry_ttl_ms}ms | correlationId=${properties.synapse.correlationId} | lastError=${properties.synapse.lastError}</message>
+                <message>[LoanApplicationConsumer] LoansAPI /eligibility unavailable, scheduling retry ${vars.nextRetryCount} of ${configs.loan_max_retries} in ${configs.loan_retry_ttl_ms}ms | correlationId=${properties.synapse.correlationId} | lastError=${properties.synapse.lastError}</message>
             </log>
 
             <!-- put the original text back as the body -->
@@ -37,7 +37,7 @@
         <else>
             <property name="errorStage" value="retries-exhausted"/>
             <property name="errorReason" scope="default" type="STRING"
-                      expression="${'LoansEligibilityAPI still unavailable after ' + string(properties.synapse.retryCount) + ' retries. Last error: ' + properties.synapse.lastError}"/>
+                      expression="${'LoansAPI /eligibility still unavailable after ' + string(properties.synapse.retryCount) + ' retries. Last error: ' + properties.synapse.lastError}"/>
             <sequence key="LoanApplicationDLQSeq"/>
         </else>
     </filter>

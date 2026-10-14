@@ -6,9 +6,9 @@
 require_vars TARGET_ENV MI_URL GATEWAY_URL
 
 TESTS="$REPO_ROOT/ci/smoke-tests.txt"
-trim() { sed 's/^ *//; s/ *$//' <<<"$1"; }
-context_of() { sed -n 's/^  context: //p' "$APIM_APIS_DIR/$1/api.yaml"; }
-version_of() { sed -n 's/^  version: //p' "$APIM_APIS_DIR/$1/api.yaml"; }
+trim() { sed 's/\r$//; s/^ *//; s/ *$//' <<<"$1"; }   # \r: the file may have Windows line endings
+context_of() { yaml_value "$APIM_APIS_DIR/$1/api.yaml" context; }
+version_of() { yaml_value "$APIM_APIS_DIR/$1/api.yaml" version; }
 
 # --- get a gateway token -----------------------------------------------------------
 # `apictl get keys` subscribes apictl's helper app to each API and returns a token.

@@ -1,4 +1,4 @@
-name: GetCustomerByID
+name: CustomersAPI
 version: 1.0.0
 deploy:
   import:

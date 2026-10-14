@@ -105,8 +105,9 @@ services:
       JAVA_OPTS: ${MI_JAVA_OPTS:--Xms256m -Xmx768m}
       ACTIVEMQ_CONNECTION_USER: ${AMQ_USER:-admin}
       ACTIVEMQ_CONNECTION_PASSWORD: ${AMQ_PASSWORD:-admin}
-      # read by CustomerProxy as ${configs.reqres_api_key}; set REQRES_API_KEY in .env
-      reqres_api_key: ${REQRES_API_KEY:-}
+      # read by CustomerProxy as ${configs.reqres_api_key}. The default is the project's shared
+      # reqres.in public key, so it works out of the box; set REQRES_API_KEY in .env to use your own.
+      reqres_api_key: ${REQRES_API_KEY:-pub_f02d3c4c984d392f88ffc537c5a37621}
       # read by LoanApplicationConsumer (queue consumer) as ${configs.*}
       loans_eligibility_url: ${LOANS_ELIGIBILITY_URL:-http://localhost:8290/loans/eligibility}
       loan_max_retries: ${LOAN_MAX_RETRIES:-3}

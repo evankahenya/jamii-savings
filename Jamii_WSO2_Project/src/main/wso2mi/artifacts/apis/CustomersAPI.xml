@@ -1,17 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<api xmlns="http://ws.apache.org/ns/synapse" name="CustomerDashboardAPI" context="/customers">
+<!-- Customer information for Jamii Savings (one API, two resources):
+       GET /customers/{customerId}            customer record from the CRM backend via CustomerProxy (Part 1b)
+       GET /customers/{customerId}/dashboard  customer + all account balances, fetched in parallel (Bonus A)
+     The dashboard resource is listed first so the more specific path is matched first. -->
+<api xmlns="http://ws.apache.org/ns/synapse" name="CustomersAPI" context="/customers">
 
     <resource methods="GET" uri-template="/{customerId}/dashboard">
         <inSequence>
-            <property name="artifactName" scope="default" type="STRING" value="CustomerDashboardAPI"/>
+            <property name="artifactName" scope="default" type="STRING" value="CustomersAPI"/>
             <sequence key="CorrelationIdSeq"/>
             <variable name="customerId" type="STRING" expression="$ctx:uri.var.customerId"/>
 
             <log category="INFO">
-                <message>[CustomerDashboardAPI] Request received | correlationId=${properties.synapse.correlationId}</message>
+                <message>[CustomersAPI dashboard] Request received | correlationId=${properties.synapse.correlationId}</message>
             </log>
 
-            <!-- same check as GetCustomerByID: customerId must be a UUID -->
+            <!-- same check as the customer lookup below: customerId must be a UUID -->
             <filter source="$ctx:uri.var.customerId" regex="^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$">
                 <then>
                     <variable name="customerIdMasked" type="STRING"
@@ -19,7 +23,7 @@
                 </then>
                 <else>
                     <log category="WARN">
-                        <message>[CustomerDashboardAPI] Validation failed: customerId must be a UUID | correlationId=${properties.synapse.correlationId}</message>
+                        <message>[CustomersAPI dashboard] Validation failed: customerId must be a UUID | correlationId=${properties.synapse.correlationId}</message>
                     </log>
                     <property name="errorStatus" value="400"/>
                     <property name="errorMessage" value="Invalid customerId. Expected a UUID."/>
@@ -33,14 +37,14 @@
             <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
 
             <log category="INFO">
-                <message>[CustomerDashboardAPI] Getting customer | correlationId=${properties.synapse.correlationId} | customerId=${vars.customerIdMasked}</message>
+                <message>[CustomersAPI dashboard] Getting customer | correlationId=${properties.synapse.correlationId} | customerId=${vars.customerIdMasked}</message>
             </log>
             <call>
                 <endpoint key="CustomerProxyEP"/>
             </call>
             <property name="customerStatus" expression="$axis2:HTTP_SC"/>
             <log category="INFO">
-                <message>[CustomerDashboardAPI] Customer lookup responded | correlationId=${properties.synapse.correlationId} | customerId=${vars.customerIdMasked} | status=${properties.synapse.customerStatus}</message>
+                <message>[CustomersAPI dashboard] Customer lookup responded | correlationId=${properties.synapse.correlationId} | customerId=${vars.customerIdMasked} | status=${properties.synapse.customerStatus}</message>
             </log>
 
             <!-- no customer means no dashboard, so these fail the whole request -->
@@ -58,7 +62,7 @@
                 </case>
                 <default>
                     <log category="ERROR">
-                        <message>[CustomerDashboardAPI] Unexpected status from customer lookup, responding HTTP 502 | correlationId=${properties.synapse.correlationId} | status=${properties.synapse.customerStatus}</message>
+                        <message>[CustomersAPI dashboard] Unexpected status from customer lookup, responding HTTP 502 | correlationId=${properties.synapse.correlationId} | status=${properties.synapse.customerStatus}</message>
                     </log>
                     <property name="errorStatus" value="502"/>
                     <property name="errorMessage" value="Bad gateway. Unexpected response from customer service"/>
@@ -92,7 +96,7 @@
                             <filter xpath="${properties.axis2.HTTP_SC != 200}">
                                 <then>
                                     <log category="WARN">
-                                        <message>[CustomerDashboardAPI] Could not get balance for account | correlationId=${properties.synapse.correlationId} | customerId=${vars.customerIdMasked} | accountNumber=${vars.accountNumber} | status=${properties.axis2.HTTP_SC}</message>
+                                        <message>[CustomersAPI dashboard] Could not get balance for account | correlationId=${properties.synapse.correlationId} | customerId=${vars.customerIdMasked} | accountNumber=${vars.accountNumber} | status=${properties.axis2.HTTP_SC}</message>
                                     </log>
                                     <payloadFactory media-type="json">
                                         <format>{
@@ -110,7 +114,7 @@
                 </then>
                 <else>
                     <log category="WARN">
-                        <message>[CustomerDashboardAPI] Customer has no accounts | correlationId=${properties.synapse.correlationId} | customerId=${vars.customerIdMasked}</message>
+                        <message>[CustomersAPI dashboard] Customer has no accounts | correlationId=${properties.synapse.correlationId} | customerId=${vars.customerIdMasked}</message>
                     </log>
                 </else>
             </filter>
@@ -132,10 +136,69 @@
             <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
 
             <log category="INFO">
-                <message>[CustomerDashboardAPI] Response sent | correlationId=${properties.synapse.correlationId} | customerId=${vars.customerIdMasked} | status=200</message>
+                <message>[CustomersAPI dashboard] Response sent | correlationId=${properties.synapse.correlationId} | customerId=${vars.customerIdMasked} | status=200</message>
             </log>
             <respond/>
         </inSequence>
+        <faultSequence>
+            <sequence key="GatewayFaultSeq"/>
+        </faultSequence>
+    </resource>
+
+    <resource methods="GET" uri-template="/{customerId}">
+        <inSequence>
+            <!--inform fault sequence which api is currently runinning-->
+            <property name="artifactName" scope="default" type="STRING" value="CustomersAPI"/>
+            <!--Start the Correlation ID sequence which checks if the request has a correlationID-->
+            <sequence key="CorrelationIdSeq"/>
+            <variable name="customerId" type="STRING" expression="$ctx:uri.var.customerId"/>
+
+            <log category="INFO">
+                <message>[CustomersAPI lookup] Request received | correlationId=${properties.synapse.correlationId} | correlationIdSource=${properties.synapse.correlationIdSource} | timestamp=${properties.synapse.requestTimestamp}</message>
+            </log>
+
+            <!-- Validate customerId (valid uuid)-->
+            <filter source="$ctx:uri.var.customerId" regex="^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$">
+                <then>
+                    <!--if customerId is valid then masking for discrete logging-->
+                    <variable name="customerIdMasked" type="STRING"
+                              expression="${subString(vars.customerId, 0, 8) + '-****-****-****-********' + subString(vars.customerId, 32)}"/>
+                </then>
+                <else>
+                    <log category="ERROR">
+                        <message>[CustomersAPI lookup] Validation failed: customerId must be a UUID, responding HTTP 400 | correlationId=${properties.synapse.correlationId}</message>
+                    </log>
+                    <property name="HTTP_SC" value="400" scope="axis2"/>
+                    <payloadFactory media-type="json">
+                        <format>{"error":"Invalid customerId. Expected a UUID.","code":400,"requestId":"${properties.synapse.correlationId}","timestamp":"${properties.synapse.requestTimestamp}"}</format>
+                    </payloadFactory>
+                    <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+                    <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
+                    <respond/>
+                </else>
+            </filter>
+
+            <!-- Strip all headers -->
+            <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+            <header name="Accept" scope="transport" value="application/json"/>
+            <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
+
+            <log category="INFO">
+                <message>[CustomersAPI lookup] Forwarding to CustomerProxy | correlationId=${properties.synapse.correlationId} | customerId=${vars.customerIdMasked}</message>
+            </log>
+            <call>
+                <endpoint key="CustomerProxyEP"/>
+            </call>
+            <log category="INFO">
+                <message>[CustomersAPI lookup] CustomerProxy responded | correlationId=${properties.synapse.correlationId} | customerId=${vars.customerIdMasked} | status=${properties.axis2.HTTP_SC}</message>
+            </log>
+
+            <property name="TRANSPORT_HEADERS" action="remove" scope="axis2"/>
+            <header name="X-Correlation-ID" scope="transport" expression="${properties.synapse.correlationId}"/>
+    
+            <respond/>
+        </inSequence>
+
         <faultSequence>
             <sequence key="GatewayFaultSeq"/>
         </faultSequence>

@@ -1,43 +1,126 @@
-# APIM definition of AccountBalanceAPI (apictl project format, APIM 4.7).
-# The OpenAPI definition and the policies are NOT stored here - the pipeline copies them in
-# when packaging (from src/main/wso2mi/resources/api-definitions/ and apim-policies/),
-# so there is only one copy of each. Per-environment backend URLs are in params.yaml.
+# Exported from API Manager (dev) with ci/scripts/pull-api.sh - see that script for what is/isn't pulled.
 type: api
 version: v4.7.0
 data:
+  id: 1ad496a0-ebaa-46ba-9487-f4e6bb0e5b41
   name: AccountBalanceAPI
+  displayName: AccountBalanceAPI
   description: Returns the current balance of a Jamii Savings account.
   context: /accounts
   version: 1.0.0
   provider: admin
   lifeCycleStatus: PUBLISHED
+  responseCachingEnabled: false
+  cacheTimeout: 300
+  hasThumbnail: false
+  isDefaultVersion: false
   isRevision: false
   revisionId: 0
+  enableSchemaValidation: false
+  enableSubscriberVerification: false
   type: HTTP
+  audiences:
+   - all
   transport:
-  - http
-  - https
+   - http
+   - https
+  tags: []
   policies:
-  - Unlimited
-  - Gold
-  - Silver
-  - Bronze
+   - Bronze
+   - Gold
+   - Silver
+   - Unlimited
+  organizationPolicies: []
+  apiKeyHeader: ApiKey
+  securityScheme:
+   - api_key
+   - oauth_basic_auth_api_key_mandatory
   visibility: PUBLIC
-  endpointConfig:
-    endpoint_type: http
-    production_endpoints:
-      url: http://mi:8290/accounts
-    sandbox_endpoints:
-      url: http://mi:8290/accounts
-  endpointImplementationType: ENDPOINT
-  # Applied to every operation of the API
+  visibleRoles: []
+  visibleTenants: []
+  visibleOrganizations:
+   - none
+  mediationPolicies: []
   apiPolicies:
     request: []
     response:
-    - policyName: jamiiHeaderSecurityPolicies
+     -
+      policyName: jamiiHeaderSecurityPolicies
       policyVersion: v1
       parameters: {}
     fault:
-    - policyName: jamiiBackendErrorPolicy
+     -
+      policyName: jamiiBackendErrorPolicy
       policyVersion: v1
       parameters: {}
+  apiHubPolicies: []
+  subscriptionAvailability: CURRENT_TENANT
+  subscriptionAvailableTenants: []
+  additionalProperties: []
+  additionalPropertiesMap: {}
+  accessControl: NONE
+  accessControlRoles: []
+  businessInformation: {}
+  corsConfiguration:
+    corsConfigurationEnabled: false
+    accessControlAllowOrigins:
+     - '*'
+    accessControlAllowCredentials: false
+    accessControlAllowHeaders:
+     - authorization
+     - Access-Control-Allow-Origin
+     - Content-Type
+     - SOAPAction
+     - apikey
+     - Internal-Key
+    accessControlAllowMethods:
+     - GET
+     - PUT
+     - POST
+     - DELETE
+     - PATCH
+     - OPTIONS
+  websubSubscriptionConfiguration:
+    enable: false
+    secret: ""
+    signingAlgorithm: SHA1
+    signatureHeader: x-hub-signature
+  createdTime: "1791889193716"
+  lastUpdatedTimestamp: "1791956696609"
+  lastUpdatedTime: 2026-10-14 05:44:56.609
+  endpointConfig:
+    endpoint_type: http
+    sandbox_endpoints:
+      url: http://mi:8290/accounts
+    production_endpoints:
+      url: http://mi:8290/accounts
+  endpointImplementationType: ENDPOINT
+  subtypeConfiguration:
+    subtype: DEFAULT
+  scopes: []
+  operations:
+   -
+    id: ""
+    target: "/{accountNumber}/balance"
+    verb: GET
+    authType: Application & Application User
+    throttlingPolicy: Unlimited
+    scopes: []
+    usedProductIds: []
+    operationPolicies:
+      request: []
+      response: []
+      fault: []
+    operationHubPolicies: []
+  categories: []
+  keyManagers:
+   - all
+  advertiseInfo:
+    advertised: false
+    vendor: WSO2
+  gatewayVendor: wso2
+  gatewayType: wso2/synapse
+  initiatedFromGateway: false
+  asyncTransportProtocols: []
+  egress: false
+  organizationId: carbon.super

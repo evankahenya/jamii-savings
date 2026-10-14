@@ -1,15 +1,25 @@
 openapi: 3.0.1
 info:
-  title: LoansEligibilityAPI
+  title: LoansAPI
   description: >
-    Checks whether a customer is eligible for a loan. Accepts a JSON request,
-    validates it against resources/schemas/LoansEligibilityRequest.json,
-    converts it to SOAP and calls the CheckLoanEligibility service. The SOAP
-    response is checked against resources/schemas/LoansEligibilityResponse.xsd
-    and returned as JSON.
+    Loans for Jamii Savings (one API, two resources).
 
-    The SOAP requestHeader (requestId, correlationId, requestTimestamp,
-    sourceSystem) is filled in by the gateway.
+    POST /loans/eligibility checks whether a customer is eligible for a loan.
+    Accepts a JSON request, validates it against
+    resources/schemas/LoansEligibilityRequest.json, converts it to SOAP and calls
+    the CheckLoanEligibility service. The SOAP response is checked against
+    resources/schemas/LoansEligibilityResponse.xsd and returned as JSON. The SOAP
+    requestHeader (requestId, correlationId, requestTimestamp, sourceSystem) is
+    filled in by the gateway.
+
+    POST /loans/applications is the entry point for loan applications. Validates
+    the request against resources/schemas/LoanApplicationRequest.json, wraps it in
+    a LoanApplicationSubmitted event and publishes it to the ActiveMQ queue
+    LoanApplicationsQueue. Answers 202 straight away - the eligibility check is
+    done asynchronously by LoanApplicationConsumer (which calls
+    /loans/eligibility) and the result is published to LoanDecisionsQueue. The
+    applicationId in the response is the correlation ID, and is also the eventId
+    of the queued event.
   version: 1.0.0
 servers:
   - url: http://localhost:8290/loans
@@ -159,6 +169,87 @@ paths:
                     code: 504
                     requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
                     timestamp: "2026-10-12T09:15:30.123+03:00"
+  /applications:
+    post:
+      summary: Submit a loan application
+      description: Queues the application for an eligibility check and returns its applicationId.
+      parameters:
+        - name: X-Correlation-ID
+          in: header
+          required: false
+          description: |
+            **Leave empty when testing** or turn on CORS
+
+            Optional caller correlation ID (8-64 chars of A-Z a-z 0-9 . _ - :). Generated if missing or malformed.
+            Becomes the applicationId.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoanApplicationRequest"
+      responses:
+        "202":
+          description: Application accepted and queued for an eligibility check
+          headers:
+            X-Correlation-ID:
+              schema:
+                type: string
+                example: 78821580-948b-4c75-8257-e18bfedeab9e
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoanApplicationAccepted"
+        "400":
+          description: Body is not valid JSON, or a required field is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidFields:
+                  summary: Field missing or invalid
+                  value:
+                    error: Invalid request. One or more fields are missing or invalid
+                    code: 400
+                    details: object has missing required properties (['kraPin'])
+                    requestId: 78821580-948b-4c75-8257-e18bfedeab9e
+                    timestamp: "2026-10-13T17:33:48.717Z"
+                invalidJson:
+                  summary: Body is not valid JSON
+                  value:
+                    error: Invalid request. Body is not valid JSON
+                    code: 400
+                    requestId: 78821580-948b-4c75-8257-e18bfedeab9e
+                    timestamp: "2026-10-13T17:33:48.717Z"
+        "415":
+          description: Content-Type is not application/json
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Unexpected internal error while processing the request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: The message broker is unavailable - nothing was queued, try again later
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                brokerDown:
+                  summary: Could not queue the application
+                  value:
+                    error: Service unavailable. The application could not be queued, please try again
+                    code: 503
+                    requestId: 78821580-948b-4c75-8257-e18bfedeab9e
+                    timestamp: "2026-10-13T17:33:48.717Z"
 components:
   schemas:
     Money:
@@ -355,6 +446,110 @@ components:
           type: string
           format: date-time
           example: "2026-10-12T09:15:30.123+03:00"
+    LoanApplicationRequest:
+      type: object
+      required:
+        - customer
+        - employment
+        - loan
+      properties:
+        customer:
+          type: object
+          required: [reference, firstName, lastName, nationalIdLastFour, kraPin, dateOfBirth, mobileNumber, county]
+          properties:
+            reference:
+              type: string
+              example: CIF000123
+            firstName:
+              type: string
+              example: Jane
+            lastName:
+              type: string
+              example: Wanjiku
+            nationalIdLastFour:
+              type: string
+              pattern: "^[0-9]{4}$"
+              example: "5678"
+            kraPin:
+              type: string
+              example: A012345678Z
+            dateOfBirth:
+              type: string
+              format: date
+              example: "1990-05-14"
+            mobileNumber:
+              type: string
+              example: "+254712345678"
+            county:
+              type: string
+              example: Nairobi
+        employment:
+          type: object
+          required: [type, employer, monthsEmployed, grossIncome, netIncome]
+          properties:
+            type:
+              type: string
+              enum: [SALARIED, SELF_EMPLOYED, CASUAL, UNEMPLOYED]
+              example: SALARIED
+            employer:
+              type: string
+              example: Acme Ltd
+            monthsEmployed:
+              type: integer
+              minimum: 0
+              example: 36
+            grossIncome:
+              type: number
+              minimum: 0
+              example: 120000
+            netIncome:
+              type: number
+              minimum: 0
+              example: 95000
+        loan:
+          type: object
+          required: [productCode, amount, tenorMonths, purpose, repaymentMethod, existingMonthlyDebt]
+          properties:
+            productCode:
+              type: string
+              example: PERSONAL
+            amount:
+              type: number
+              minimum: 1
+              description: Amount in KES
+              example: 50000
+            tenorMonths:
+              type: integer
+              minimum: 1
+              example: 12
+            purpose:
+              type: string
+              example: School fees
+            repaymentMethod:
+              type: string
+              enum: [MPESA, BANK_TRANSFER, CHECK_OFF, STANDING_ORDER]
+              example: MPESA
+            existingMonthlyDebt:
+              type: number
+              minimum: 0
+              description: Monthly repayments on existing loans, in KES
+              example: 5000
+    LoanApplicationAccepted:
+      type: object
+      properties:
+        applicationId:
+          type: string
+          example: 78821580-948b-4c75-8257-e18bfedeab9e
+        status:
+          type: string
+          enum: [RECEIVED]
+        message:
+          type: string
+          example: Loan application received. Eligibility will be checked shortly.
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-10-13T17:33:48.585Z"
     Error:
       type: object
       required:
@@ -369,6 +564,10 @@ components:
         code:
           type: integer
           example: 400
+        details:
+          type: string
+          description: Extra detail about a validation error (only on some 400 responses)
+          example: "object has missing required properties (['kraPin'])"
         requestId:
           type: string
           description: Correlation ID of the request (also sent in the X-Correlation-ID header)

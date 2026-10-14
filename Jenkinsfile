@@ -2,7 +2,7 @@
 // Jamii Savings - ONE pipeline for ALL the APIs.
 //
 // The APIs it handles = the folders in Jamii_WSO2_Project/apim-apis/
-// (AccountBalanceAPI, CustomerDashboardAPI, GetCustomerByID, LoansEligibilityAPI).
+// (AccountBalanceAPI, CustomersAPI, LoansAPI).
 // Adding an API = adding a folder there; nothing in this file changes.
 //
 //   Validate -> Build MI CAR -> Test -> Package APIM APIs

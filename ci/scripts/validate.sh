@@ -21,19 +21,33 @@ for api in $(api_names); do
     [ -f "$dir/$f" ] || problem "$api: missing $f"
   done
   for env in dev uat prod; do
-    grep -q "name: $env\$" "$dir/params.yaml" 2>/dev/null || problem "$api: params.yaml has no '$env' environment"
+    grep -q "name: $env.\{0,1\}\$" "$dir/params.yaml" 2>/dev/null || problem "$api: params.yaml has no '$env' environment"
   done
   # the APIM context must match the MI API context, otherwise the gateway calls the wrong backend
   mi_ctx=$(xmllint --xpath 'string(//*[local-name()="api"]/@context)' "$MI_APIS_DIR/$api.xml" 2>/dev/null || true)
-  apim_ctx=$(sed -n 's/^  context: //p' "$dir/api.yaml")
+  apim_ctx=$(yaml_value "$dir/api.yaml" context)
   if [ "$mi_ctx" = "$apim_ctx" ]; then ok "$api (context $apim_ctx)"
   else problem "$api: APIM context '$apim_ctx' != MI context '$mi_ctx'"; fi
 done
 
 log "APIM policies referenced by the APIs exist"
-for p in $(grep -h 'policyName:' "$APIM_APIS_DIR"/*/api.yaml | awk '{print $NF}' | sort -u); do
+for p in $(grep -h 'policyName:' "$APIM_APIS_DIR"/*/api.yaml | awk '{print $NF}' | tr -d '\r' | sort -u); do
   if ls "$APIM_POLICIES_DIR"/*/"$p.yaml" "$APIM_POLICIES_DIR"/*/"$p.j2" >/dev/null 2>&1; then ok "$p"
   else problem "policy $p not found under apim-policies/"; fi
+done
+
+log "API-level rate-limiting tiers used by the APIs exist"
+for f in "$RATE_LIMIT_DIR"/*.yaml; do
+  [ -e "$f" ] || continue
+  name=$(yaml_value "$f" policyName)
+  [ "$name" = "$(basename "$f" .yaml)" ] || problem "${f#"$REPO_ROOT"/}: policyName '$name' must match the file name"
+done
+for api in $(api_names); do
+  tier=$(yaml_value "$APIM_APIS_DIR/$api/api.yaml" apiThrottlingPolicy)
+  [ -n "$tier" ] || continue
+  if [[ " $BUILTIN_API_TIERS " == *" $tier "* ]]; then ok "$api uses built-in tier $tier"
+  elif [ -f "$RATE_LIMIT_DIR/$tier.yaml" ]; then ok "$api uses custom tier $tier (${RATE_LIMIT_DIR#"$REPO_ROOT"/}/$tier.yaml)"
+  else problem "$api uses tier '$tier', which is not built in and has no file in ${RATE_LIMIT_DIR#"$REPO_ROOT"/}/"; fi
 done
 
 if [ "$errors" -gt 0 ]; then
