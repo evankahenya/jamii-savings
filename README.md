@@ -4,15 +4,23 @@ Three integrations for a fictional bank, built on WSO2 Micro Integrator 4.6, pub
 
 ## How to run (Windows, Command Prompt)
 
-Requires Git and Docker Desktop (running, with about 6 GB of memory).
+Requires Git and Docker Desktop (minimum  requirement: 8 GB Docker RAM) (running, with about 6 GB of memory).
 
 1. `git clone https://github.com/evankahenya/jamii-savings.git C:\jamii-savings`
-2. `cd C:\jamii-savings\infra` then `docker compose up -d` starts API Manager, MI, ActiveMQ and the database. The first run takes about 15 minutes.
-3. `cd jenkins` then `docker compose up -d --build` starts Jenkins, which deploys the APIs by itself.
-4. Open http://localhost:8081 (`admin` / `admin`) and wait for the `jamii-api-deploy` build to turn green.
-5. Test it: `curl http://localhost:8290/accounts/0022012569822/balance`
+2. Naviage to the infra folder `\jamii-savings\infra` 
+3. Open your termnial run this command `docker compose up -d`. The first run takes about 15 minutes depending on your internet since images are downloading.
+4. Once step 3 is complete naviage to jenkins folder `cd jenkins` 
+5. Run the command `docker compose up -d --build` starts Jenkins, which deploys the APIs by itself.
+6. Open Jenkins at  http://localhost:8081 (`admin` / `admin`) and wait for the `jamii-api-deploy` build to turn green for ALL stages.
+7. Enusure all portals are running
+8. Visit publisher portal https://localhost:9443/publisher
+9. Test the API on the dev portal: https://localhost:9443/devportal
 
-All other logins are also `admin` / `admin`: Publisher and Dev Portal at https://localhost:9443, ActiveMQ at http://localhost:8161. If something doesn't work, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+All other logins are also `admin` / `admin`: Publisher and Dev Portal at https://localhost:9443, ActiveMQ at http://localhost:8161. 
+
+If something doesn't work, see TROUBLESHOOTING.md (TROUBLESHOOTING.md).
+
+
 
 ## Repository layout
 
@@ -57,6 +65,7 @@ jamii-savings/
 ### All three APIs
 - They share one error format: `{ "error", "code", "requestId", "timestamp" }`.
 - Bad input returns 400, never 500.
+- Gateway sign-in errors (401, 403) use the same format, plus a `details` field that says how to fix the problem. For example, a 403 tells the client to associate its API key with a subscribed application.
 - Logs record the request in, the backend call and the response out, with account numbers and customer IDs masked.
 
 ## API Manager
@@ -127,3 +136,4 @@ Each deploy updates MI, then API Manager, then runs smoke tests. If anything fai
 - Write Synapse unit tests. The Test stage runs but has none yet; today's checks are validation and the post-deployment smoke tests.
 - Use a real database and a secrets store, change the default logins, and set up uat and prod for real.
 - Let the pipeline remove APIs that were deleted from the repo, and support versions other than 1.0.0.
+- Draw.io digram to visualize the api flow

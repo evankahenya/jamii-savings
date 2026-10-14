@@ -144,9 +144,23 @@ services:
   #   Gateway:     https://localhost:8243/...
   # API backends point at MI by service name: http://mi:8290/...
   # -------------------------------------------------------------------
+  # One-shot job: the APIM image has no solr/ folder (APIM creates it on first start), so a
+  # volume mounted there starts out owned by root and APIM can't write its search index.
+  # This hands the volume to APIM's user (10001) before APIM starts.
+  apim-init:
+    image: ${SQLITE_IMAGE:-keinos/sqlite3:3.46.1}
+    user: root
+    entrypoint: ["/bin/sh", "-c", "chown -R 10001:10001 /solr && echo '[apim-init] search index volume ready'"]
+    volumes:
+      - apim-solr:/solr
+    restart: "no"
+
   apim:
     image: ${APIM_IMAGE:-wso2/wso2am:4.7.0}
     hostname: apim
+    depends_on:
+      apim-init:
+        condition: service_completed_successfully
     environment:
       JAVA_OPTS: ${APIM_JAVA_OPTS:--Xms512m -Xmx1536m}
     ports:
@@ -156,7 +170,12 @@ services:
     volumes:
       # built-in H2 databases (APIs, apps, subscriptions) survive container re-creation
       - apim-db:/home/wso2carbon/wso2am-4.7.0/repository/database
-    mem_limit: ${APIM_MEM_LIMIT:-2500m}
+      # the search index must live next to the database: if the container is recreated and the
+      # index is lost, the Publisher / Dev Portal / apictl stop listing APIs that still exist
+      - apim-solr:/home/wso2carbon/wso2am-4.7.0/solr
+      # Jamii error format + "what to do next" for auth failures (401/403), e.g. app not subscribed
+      - ./apim/_auth_failure_handler_.xml:/home/wso2carbon/wso2am-4.7.0/repository/deployment/server/synapse-configs/default/sequences/_auth_failure_handler_.xml:ro
+    mem_limit: ${APIM_MEM_LIMIT:-3g}   # Java heap 1.5 GB + ~1.3 GB non-heap; 2.5 GB ran at 97%
     healthcheck:
       test: ["CMD-SHELL", "curl -skf https://localhost:9443/services/Version || exit 1"]
       interval: 20s
@@ -171,3 +190,4 @@ volumes:
   maven-repo:
   amq-data:
   apim-db:
+  apim-solr:

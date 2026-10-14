@@ -102,6 +102,6 @@
         </plugins>
     </broker>
 
-    <!-- web console (http://localhost:8161/admin) and the REST API used by send-test-events.ps1 -->
+    <!-- web console (http://localhost:8161/admin) and its REST API (e.g. for posting test messages) -->
     <import resource="jetty.xml"/>
 </beans>

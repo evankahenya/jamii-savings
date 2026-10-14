@@ -142,9 +142,12 @@ done
 
 log "Backing up current APIs from APIM"
 for api in "${APIS[@]}"; do
-  if apim_api_exists "$api"; then
-    apictl export api -n "$api" -v 1.0.0 -e "$TARGET_ENV" -k >/dev/null
-    mv "$HOME/.wso2apictl/exported/apis/$TARGET_ENV/${api}_1.0.0.zip" "$BACKUP/$api.zip"
+  # export doubles as the existence check: it reads the database directly, unlike the API
+  # list/search, which depends on APIM's search index and can lag or be incomplete
+  exported="$HOME/.wso2apictl/exported/apis/$TARGET_ENV/${api}_1.0.0.zip"
+  rm -f "$exported"
+  if apictl export api -n "$api" -v 1.0.0 -e "$TARGET_ENV" -k >/dev/null 2>&1 && [ -f "$exported" ]; then
+    mv "$exported" "$BACKUP/$api.zip"
     ok "$api (backed up)"
   else
     NEW_APIS+=("$api"); ok "$api (new - will be created)"

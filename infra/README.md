@@ -44,6 +44,16 @@ work with no setup. To use your own key instead, copy `.env.example` to `.env` a
 | `activemq` | ActiveMQ Classic 5.18.7 | JMS broker for MI |
 | `sqlite-init` | SQLite 3.46.1 | One-shot job: builds `Jamii_db` from `schema.sql` + `seed.sql` |
 | `car-build` | Maven 3.9.9 / JDK 21 | One-shot job: builds the `.car` and drops it into MI (skipped if one is already deployed) |
+| `apim-init` | SQLite 3.46.1 image | One-shot job: makes API Manager's search-index volume writable before API Manager starts |
+
+API Manager keeps two volumes: `apim-db` (APIs, apps, subscriptions) and `apim-solr` (its
+search index). Both must survive a container re-creation together. If the index is lost
+while the database is kept, the Publisher, Dev Portal and `apictl` stop listing APIs that
+still exist.
+
+**Sign-in errors:** `apim/_auth_failure_handler_.xml` replaces API Manager's gateway-wide
+auth failure handler. 401 and 403 errors then use the Jamii error format, with a `details`
+field explaining how to fix them, instead of `{"code":"900908","message":"Resource forbidden"}`.
 
 > **SQLite is a file, not a server.** `sqlite-init` creates the file in a shared Docker
 > volume (`jamii-data`), and MI opens that same file through the JDBC driver.
@@ -55,8 +65,8 @@ match (see `mi/Dockerfile`).
 
 **Loan application queues:** the broker starts with `activemq/jamii-activemq.xml`, which is the
 default config plus one rule: expired messages on `LoanApplicationsRetryQueue` go back to
-`LoanApplicationsQueue`, which gives a delayed retry. Send test events with
-`.\activemq\send-test-events.ps1`. The full design is in [../docs/loan-application-queue.md](../docs/loan-application-queue.md).
+`LoanApplicationsQueue`, which gives a delayed retry. The design is summarised under
+"Bonus tasks" in the main [README](../README.md).
 
 ## Environments
 
@@ -82,6 +92,7 @@ infra/
 ├── mi/Dockerfile                 <- MI 4.6 + SQLite JDBC + ActiveMQ client jars
 ├── mi/build-car.sh               <- used by the car-build service
 ├── sqlite/init-db.sh             <- used by the sqlite-init service
+├── apim/_auth_failure_handler_.xml <- clear 401/403 errors in the Jamii format
 ├── jenkins/                      <- the CI server (separate compose project)
 └── jamii.ps1                     <- OPTIONAL PowerShell shortcuts
 ```

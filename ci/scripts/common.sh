@@ -133,8 +133,12 @@ apim_ready() {  # APIM is up (health endpoint) AND accepts an apictl login
   curl -skf --max-time 10 "$APIM_URL/services/Version" >/dev/null && apictl_setup
 }
 
-apim_api_exists() {  # apim_api_exists <name>   (the query is a partial match - grep -x makes it exact)
-  apictl get apis -e "$TARGET_ENV" -k -q "name:$1" -l 100 --format '{{.Name}}' 2>/dev/null | grep -qx "$1"
+apim_api_exists() {  # apim_api_exists <name>
+  # uses export (reads the database) rather than "apictl get apis" (uses the search index,
+  # which can lag behind or be empty after the APIM container is recreated)
+  local zip="$HOME/.wso2apictl/exported/apis/$TARGET_ENV/${1}_1.0.0.zip"
+  rm -f "$zip"
+  apictl export api -n "$1" -v 1.0.0 -e "$TARGET_ENV" -k >/dev/null 2>&1 && [ -f "$zip" ]
 }
 
 # Security schemes listed under "securityScheme:" in an api.yaml / api_product.yaml

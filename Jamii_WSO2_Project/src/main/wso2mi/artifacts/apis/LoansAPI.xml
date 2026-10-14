@@ -246,7 +246,7 @@
 
     <!-- Entry point for loan applications. Validates the request, wraps it in a LoanApplicationSubmitted
          event and publishes it to LoanApplicationsQueue, then answers 202 straight away.
-         The eligibility check happens later in LoanApplicationConsumer (see docs/loan-application-queue.md) -->
+         The eligibility check happens later in LoanApplicationConsumer (see "Bonus tasks" in README.md) -->
     <resource methods="POST" uri-template="/applications">
         <inSequence>
             <property name="artifactName" scope="default" type="STRING" value="LoansAPI"/>

@@ -58,6 +58,14 @@ The pages on port 9443 (Publisher, Dev Portal, Admin Portal) and the gateway on 
 
 Gateway URLs look like `https://localhost:8243/{context}/1.0.0/...`, for example `https://localhost:8243/accounts/1.0.0/0022012569822/balance`. You need a key or token from the Dev Portal. See "How a client discovers and subscribes" in the [README](README.md).
 
+Every sign-in error explains itself in its `details` field. The common ones:
+
+| Status | Meaning | Fix |
+|---|---|---|
+| 401 Missing credentials | No key or token was sent | AccountBalanceAPI: `ApiKey: <key>` header. Other APIs: `Authorization: Bearer <token>` |
+| 401 Invalid credentials | The key or token is wrong or expired | Generate a new one in the Dev Portal |
+| 403 Forbidden | The key or token isn't linked to an application subscribed to the API | Key made on the API's page: associate it with a subscribed application (API → API Keys). Key or token made in an application: subscribe that application to the API. The same key then works. |
+
 ## Addresses and logins
 
 | What | Address | Login |

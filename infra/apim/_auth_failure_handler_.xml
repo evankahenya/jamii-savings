@@ -1,0 +1,93 @@
+<!--
+  Jamii version of API Manager's gateway-wide "_auth_failure_handler_" sequence.
+  infra/compose.yaml mounts it over the built-in one.
+
+  The gateway runs this when a request fails authentication or authorisation (missing or
+  invalid API key / token, application not subscribed to the API ...), BEFORE the request
+  reaches the API or its policies. The built-in version answers with API Manager's own
+  {"code":"900908","message":"Resource forbidden"} format, which doesn't tell the client
+  what went wrong or how to fix it. This version answers in the same error format as the
+  rest of the Jamii APIs, explains the problem and says what to do next:
+
+    {"error":"...","code":403,"details":"... (gateway error 900908)","requestId":"...","timestamp":"..."}
+
+  A 403 (900908) has two causes in APIM 4.7, both covered by the message:
+    - a key created on the API's page that was never associated with a subscribed application
+    - a key or token from an application that is not subscribed to the API
+  In both cases the SAME key starts working once it's fixed - no need for a new one.
+-->
+<sequence name="_auth_failure_handler_" xmlns="http://ws.apache.org/ns/synapse">
+
+    <!-- HTTP status chosen by the gateway (401 or 403); 401 if it didn't set one -->
+    <property name="jamiiAuthStatus" value="401"/>
+    <filter xpath="$ctx:HTTP_RESPONSE_STATUS_CODE">
+        <then>
+            <property name="jamiiAuthStatus" expression="$ctx:HTTP_RESPONSE_STATUS_CODE"/>
+        </then>
+    </filter>
+
+    <!-- a clear message and the next step, per gateway error code -->
+    <switch source="get-property('ERROR_CODE')">
+        <case regex="900908">
+            <property name="jamiiAuthError" value="Forbidden. This API key or access token is not linked to an application that is subscribed to this API."/>
+            <property name="jamiiAuthDetails" value="In the Developer Portal: if you created the key on this API's page, open the API, go to API Keys and associate the key with an application that is subscribed to this API. If you created the key or token in an application, subscribe that application to this API (API, then Subscriptions). Then call again with the same key or token."/>
+        </case>
+        <case regex="900902">
+            <property name="jamiiAuthError" value="Missing credentials. The request has no API key or access token."/>
+            <property name="jamiiAuthDetails" value="Send the API key in the 'ApiKey' header (AccountBalanceAPI) or an OAuth2 access token in the 'Authorization: Bearer' header (other APIs). Get one in the Developer Portal under Applications."/>
+        </case>
+        <case regex="900901">
+            <property name="jamiiAuthError" value="Invalid credentials. The API key or access token is not valid, or has expired."/>
+            <property name="jamiiAuthDetails" value="Generate a new API key or access token in the Developer Portal, from an application that is subscribed to this API."/>
+        </case>
+        <case regex="900910">
+            <property name="jamiiAuthError" value="Forbidden. The access token does not have the scope this resource requires."/>
+            <property name="jamiiAuthDetails" value="Request a new access token that includes the scope required by this resource."/>
+        </case>
+        <case regex="900905">
+            <property name="jamiiAuthError" value="Forbidden. The key or token is for the wrong environment (production or sandbox)."/>
+            <property name="jamiiAuthDetails" value="Use a production key or token, generated under the application's Production Keys."/>
+        </case>
+        <default>
+            <property name="jamiiAuthError" expression="get-property('ERROR_MESSAGE')"/>
+            <property name="jamiiAuthDetails" expression="get-property('ERROR_DETAIL')"/>
+        </default>
+    </switch>
+    <property name="jamiiAuthDetails" expression="concat(get-property('jamiiAuthDetails'), ' (gateway error ', get-property('ERROR_CODE'), ')')"/>
+
+    <!-- requestId: the caller's X-Correlation-ID if they sent one, otherwise the gateway's message ID -->
+    <property name="jamiiRequestId" expression="get-property('transport', 'X-Correlation-ID')"/>
+    <filter xpath="string-length(get-property('jamiiRequestId')) = 0">
+        <then>
+            <property name="jamiiRequestId" expression="substring-after(get-property('MessageID'), 'urn:uuid:')"/>
+        </then>
+    </filter>
+    <property name="jamiiTimestamp" expression="get-property('SYSTEM_DATE', &quot;yyyy-MM-dd'T'HH:mm:ss.SSSXXX&quot;)"/>
+
+    <payloadFactory media-type="json">
+        <format>{"error":"$1","code":$2,"details":"$3","requestId":"$4","timestamp":"$5"}</format>
+        <args>
+            <arg evaluator="xml" expression="get-property('jamiiAuthError')"/>
+            <arg evaluator="xml" expression="get-property('jamiiAuthStatus')"/>
+            <arg evaluator="xml" expression="get-property('jamiiAuthDetails')"/>
+            <arg evaluator="xml" expression="get-property('jamiiRequestId')"/>
+            <arg evaluator="xml" expression="get-property('jamiiTimestamp')"/>
+        </args>
+    </payloadFactory>
+    <property name="messageType" value="application/json" scope="axis2"/>
+    <property name="HTTP_SC" expression="get-property('jamiiAuthStatus')" scope="axis2"/>
+
+    <!-- same housekeeping as the built-in handler -->
+    <property name="RESPONSE" value="true"/>
+    <header name="To" action="remove"/>
+    <property name="NO_ENTITY_BODY" scope="axis2" action="remove"/>
+    <property name="ContentType" scope="axis2" action="remove"/>
+    <property name="Authorization" scope="transport" action="remove"/>
+    <property name="Host" scope="transport" action="remove"/>
+    <property name="Accept" scope="transport" action="remove"/>
+    <property name="X-JWT-Assertion" scope="transport" action="remove"/>
+    <header name="X-Correlation-ID" scope="transport" expression="get-property('jamiiRequestId')"/>
+    <header name="Cache-Control" scope="transport" value="no-store"/>
+    <header name="X-Content-Type-Options" scope="transport" value="nosniff"/>
+    <sequence key="_cors_request_handler_"/>
+</sequence>
