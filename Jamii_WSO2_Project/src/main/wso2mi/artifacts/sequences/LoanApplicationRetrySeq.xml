@@ -1,10 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <sequence xmlns="http://ws.apache.org/ns/synapse" name="LoanApplicationRetrySeq" trace="disable">
     <!-- Delayed retry for when LoansAPI /eligibility is down / timing out / answering 5xx.
-         The original event goes to LoanApplicationsRetryQueue with a time-to-live. Nothing reads
-         that queue: when the TTL runs out ActiveMQ moves the message back to LoanApplicationsQueue
-         (rule in infra/activemq/jamii-activemq.xml) and LoanApplicationConsumer tries again.
-         The retry count travels with the message as the JMS property "retryCount".
+         The original event goes to LoanApplicationsRetryQueue with a time-to-live. 
+         When the TTL runs out ActiveMQ moves the message back to LoanApplicationsQueue
+         and LoanApplicationConsumer tries again. The retry count travels with the message as the JMS property "retryCount".
          Limits come from config: loan_max_retries (default 3), loan_retry_ttl_ms (default 60000).
          Expects properties: rawEvent, retryCount, lastError, correlationId -->
     <filter xpath="${integer(properties.synapse.retryCount) &lt; configs.loan_max_retries}">

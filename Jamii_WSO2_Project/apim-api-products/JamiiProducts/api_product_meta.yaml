@@ -1,0 +1,9 @@
+name: JamiiProducts
+version: 1.0.0
+deploy:
+  import:
+    # the APIs are imported separately (from apim-apis/) before the product
+    importApis: false
+    preserveProvider: true
+    updateApiProduct: true
+    rotateRevision: true

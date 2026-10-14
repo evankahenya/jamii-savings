@@ -27,10 +27,15 @@ LAST_GOOD=$(ls "$LAST_GOOD_DIR"/*.car 2>/dev/null | head -1 || true)
 WORK="$DIST_DIR/deploy-$TARGET_ENV"
 BACKUP="$WORK/backup"
 mapfile -t APIS < <(api_names)
+mapfile -t PRODUCTS < <(product_names)
 
-IMPORTED=()      # APIs we have touched in APIM (for rollback)
-NEW_APIS=()      # APIs that did not exist before this deploy
+IMPORTED=()            # APIs we have touched in APIM (for rollback)
+NEW_APIS=()            # APIs that did not exist before this deploy
+IMPORTED_PRODUCTS=()   # API Products we have touched
+NEW_PRODUCTS=()        # API Products that did not exist before this deploy
 MI_TOUCHED=false
+
+is_in() { [[ " ${*:2} " == *" $1 "* ]]; }   # is_in <item> <list...>
 
 # ---------------------------------------------------------------------
 rollback() {
@@ -39,6 +44,15 @@ rollback() {
   log "ROLLING BACK $TARGET_ENV"
   # the smoke test's helper app subscribes to the APIs; subscriptions block deleting an API
   apictl delete app -n default-apictl-app -e "$TARGET_ENV" -k >/dev/null 2>&1
+  # 1. NEW products go first: a product that uses an API blocks deleting that API
+  local prod
+  for prod in "${IMPORTED_PRODUCTS[@]}"; do
+    is_in "$prod" "${NEW_PRODUCTS[@]}" || continue
+    if apictl delete api-product -n "$prod" -v 1.0.0 -r admin -e "$TARGET_ENV" -k >/dev/null 2>&1; then
+      ok "APIM: removed new API product $prod"
+    else fail "APIM: could not remove API product $prod"; problems=$((problems + 1)); fi
+  done
+  # 2. APIs
   for ((i = ${#IMPORTED[@]} - 1; i >= 0; i--)); do
     local api=${IMPORTED[$i]}
     if [[ " ${NEW_APIS[*]} " == *" $api "* ]]; then
@@ -53,6 +67,14 @@ rollback() {
         ok "APIM: restored previous $api"
       else fail "APIM: could not restore $api"; problems=$((problems + 1)); fi
     fi
+  done
+  # 3. products that existed before: restore them now that their APIs are back
+  for prod in "${IMPORTED_PRODUCTS[@]}"; do
+    is_in "$prod" "${NEW_PRODUCTS[@]}" && continue
+    if apictl import api-product -f "$BACKUP/products/$prod" -e "$TARGET_ENV" \
+         --update-api-product --rotate-revision -k >/dev/null 2>&1; then
+      ok "APIM: restored previous API product $prod"
+    else fail "APIM: could not restore API product $prod"; problems=$((problems + 1)); fi
   done
   if $MI_TOUCHED; then
     if [ -n "$LAST_GOOD" ]; then
@@ -91,6 +113,10 @@ for api in "${APIS[@]}"; do
   [ -f "$DIST_DIR/apis/${api}_1.0.0.zip" ] || { echo "Missing package for $api - run package-apis.sh" >&2; exit 1; }
 done
 ok "API packages: ${APIS[*]}"
+for prod in "${PRODUCTS[@]}"; do
+  [ -f "$DIST_DIR/api-products/${prod}_1.0.0.zip" ] || { echo "Missing package for API product $prod - run package-apis.sh" >&2; exit 1; }
+done
+[ "${#PRODUCTS[@]}" -eq 0 ] || ok "API product packages: ${PRODUCTS[*]}"
 # The environment may still be starting (e.g. Jenkins and the platform were started
 # together): wait for it instead of failing. APIM needs ~3 min; on a first-ever start
 # MI waits for the CAR build (~10 min), hence the generous default.
@@ -124,6 +150,22 @@ for api in "${APIS[@]}"; do
     NEW_APIS+=("$api"); ok "$api (new - will be created)"
   fi
 done
+for prod in "${PRODUCTS[@]}"; do
+  if apim_export_product "$prod" "$WORK/$prod-export.zip"; then
+    # keep a CLEANED copy to restore from: without the bundled API copies (the APIs are
+    # restored on their own) and without the instance IDs - the same shape as the repo's
+    d="$BACKUP/products/$prod"; mkdir -p "$d"
+    unzip -q "$WORK/$prod-export.zip" -d "$WORK/$prod-export"
+    src=$(find "$WORK/$prod-export" -mindepth 1 -maxdepth 1 -type d | head -1)
+    sed -e '/^  id: /d' -e '/^    apiId: /d' -e '/policyType:/d' -e '/policyId:/d' "$src/api_product.yaml" > "$d/api_product.yaml"
+    sed 's/importApis: true/importApis: false/' "$src/api_product_meta.yaml" > "$d/api_product_meta.yaml"
+    mkdir -p "$d/Definitions"; cp "$src/Definitions/swagger.yaml" "$d/Definitions/"
+    cp "$APIM_PRODUCTS_DIR/$prod/deployment_environments.yaml" "$d/"
+    ok "API product $prod (backed up)"
+  else
+    NEW_PRODUCTS+=("$prod"); ok "API product $prod (new - will be created)"
+  fi
+done
 if [ -n "$LAST_GOOD" ]; then ok "MI rollback copy: $LAST_GOOD"
 else warn "no previous CAR recorded for $TARGET_ENV - a rollback would remove the CApp"; fi
 
@@ -144,10 +186,20 @@ for api in "${APIS[@]}"; do
   ok "$api imported, published and deployed to gateway"
 done
 
+if [ "${#PRODUCTS[@]}" -gt 0 ]; then
+  log "Importing API Products (after the APIs they group)"
+  for prod in "${PRODUCTS[@]}"; do
+    IMPORTED_PRODUCTS+=("$prod")
+    apictl import api-product -f "$DIST_DIR/api-products/${prod}_1.0.0.zip" -e "$TARGET_ENV" \
+      --update-api-product --rotate-revision -k >/dev/null
+    ok "$prod imported, published and deployed to gateway"
+  done
+fi
+
 log "Smoke testing"
 bash "$REPO_ROOT/ci/scripts/smoke-test.sh"
 
 trap - ERR
 rm -f "${LAST_GOOD_DIR:?}"/*.car
 cp "$CAR" "$LAST_GOOD_DIR/"
-log "Deployment to $TARGET_ENV succeeded: MI CApp + ${#APIS[@]} APIs"
+log "Deployment to $TARGET_ENV succeeded: MI CApp + ${#APIS[@]} APIs + ${#PRODUCTS[@]} API product(s)"

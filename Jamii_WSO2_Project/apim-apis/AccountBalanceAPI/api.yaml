@@ -2,7 +2,6 @@
 type: api
 version: v4.7.0
 data:
-  id: 1ad496a0-ebaa-46ba-9487-f4e6bb0e5b41
   name: AccountBalanceAPI
   displayName: AccountBalanceAPI
   description: Returns the current balance of a Jamii Savings account.
@@ -85,9 +84,8 @@ data:
     secret: ""
     signingAlgorithm: SHA1
     signatureHeader: x-hub-signature
-  createdTime: "1791889193716"
-  lastUpdatedTimestamp: "1791956696609"
-  lastUpdatedTime: 2026-10-14 05:44:56.609
+  lastUpdatedTimestamp: "1791961699557"
+  lastUpdatedTime: 2026-10-14 07:08:19.557
   endpointConfig:
     endpoint_type: http
     sandbox_endpoints:

@@ -1,0 +1,1314 @@
+openapi: 3.0.1
+info:
+  title: JamiiProducts
+  version: 1.0.0
+servers:
+ -
+  url: /
+security:
+ -
+  default: []
+paths:
+  /{accountNumber}/balance:
+    get:
+      summary: Get account balance
+      description: Returns the current balance of an account. Repeat requests for the same account within 60 seconds are served from cache.
+      parameters:
+       -
+        name: accountNumber
+        in: path
+        description: 13-digit account number
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: string
+        example: "0051012695378"
+      responses:
+        "200":
+          description: Account balance
+          headers:
+            X-Cache-Status:
+              description: "MISS when fetched from the database, HIT when served from cache"
+              style: simple
+              explode: false
+              schema:
+                type: string
+                example: MISS
+                enum:
+                 - MISS
+                 - HIT
+            X-Cache-Age:
+              description: Seconds since the cached response was fetched from the database (0 on MISS)
+              style: simple
+              explode: false
+              schema:
+                type: integer
+                example: 0
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountBalance"
+              examples:
+                active:
+                  summary: Active account
+                  value:
+                    accountNumber: "0051012695378"
+                    status: ACTIVE
+                    balance:
+                      amount: 15250.75
+                      currency: KES
+                    requestId: 3f2b8c1e-9a4d-4e7b-b1c2-5d6e7f8a9b0c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+                dormant:
+                  summary: Dormant account
+                  value:
+                    accountNumber: "9876543210987"
+                    status: DORMANT
+                    balance:
+                      amount: 0
+                      currency: KES
+                    requestId: 7a1d2e3f-4b5c-4d6e-8f90-a1b2c3d4e5f6
+                    timestamp: 2026-10-12T09:16:02.456+03:00
+        "400":
+          description: Account number is not exactly 13 digits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidAccountNumber:
+                  summary: Account number is not 13 digits
+                  value:
+                    error: Invalid account number. Expected exactly 13 digits.
+                    code: 400
+                    requestId: b4c5d6e7-f809-4a1b-9c2d-3e4f5a6b7c8d
+                    timestamp: 2026-10-12T09:17:11.789+03:00
+        "404":
+          description: No account with this number in the database
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountNotFoundError"
+              examples:
+                accountNotFound:
+                  summary: Account does not exist
+                  value:
+                    error: Account not found
+                    accountNumber: "1234567890000"
+                    code: 404
+                    requestId: c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f
+                    timestamp: 2026-10-12T09:18:45.012+03:00
+        "500":
+          description: The database query failed (AccountDataService returned an error)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                databaseError:
+                  summary: Database returned an error
+                  value:
+                    error: Internal server error. Database unavailable
+                    code: 500
+                    requestId: d9e8f7a6-b5c4-4d3e-9f2a-1b0c9d8e7f6a
+                    timestamp: 2026-10-12T09:19:20.345+03:00
+        "503":
+          description: "The database did not respond within 5 seconds, or an unexpected error occurred while processing the request"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                serviceUnavailable:
+                  summary: Database unreachable or timed out
+                  value:
+                    error: Service unavailable
+                    code: 503
+                    requestId: e5f6a7b8-c9d0-4e1f-a2b3-c4d5e6f7a8b9
+                    timestamp: 2026-10-12T09:20:05.678+03:00
+      security:
+       -
+        default: []
+      x-auth-type: Application & Application User
+      x-throttling-tier: Unlimited
+  /{customerId}:
+    get:
+      summary: Get customer by ID
+      description: Returns the customer record for the given customer ID.
+      parameters:
+       -
+        name: customerId
+        in: path
+        description: Customer record UUID
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: string
+          format: uuid
+        example: e46f08a1-2750-46c6-a2eb-21e1b11fe57a
+       -
+        name: X-Correlation-ID
+        in: header
+        description: |
+          **Leave empty when testing** or turn on CORS
+
+          Optional caller correlation ID (8-64 chars of A-Z a-z 0-9 . _ - :). Generated if missing or malformed.
+        required: false
+        style: simple
+        explode: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Customer record (backend payload returned as is)
+          headers:
+            X-Correlation-ID:
+              style: simple
+              explode: false
+              schema:
+                type: string
+                example: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerRecord"
+              examples:
+                customer:
+                  summary: Customer found
+                  value:
+                    data:
+                      id: e46f08a1-2750-46c6-a2eb-21e1b11fe57a
+                      collection_id: 872ef233-86b1-4415-8a1e-47f1d3e84696
+                      project_id: 53942
+                      app_user_id: null
+                      created_by: 147235
+                      created_at: 2026-10-11T17:02:14.913Z
+                      updated_at: 2026-10-11T17:02:14.913Z
+                      deleted_at: null
+                      data:
+                        name: Felix Omondi Onyango
+                        email: felix.onyango@example.com
+                        phone: "+254732345641"
+                        address:
+                          city: Nairobi
+                          county: Nairobi
+                          street: Mombasa Road
+                          country: Kenya
+                          postal_code: "00506"
+                        kra_pin: A212345678X
+                        lastname: Onyango
+                        firstname: Felix
+                        date_of_birth: 1989-01-09
+                        account_number:
+                         - "0051012695378"
+                        identification_number: "31278945"
+                        identification_document: ID
+        "400":
+          description: customerId is not a UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidCustomerId:
+                  summary: customerId is not a UUID
+                  value:
+                    error: Invalid customerId. Expected a UUID.
+                    code: 400
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+        "404":
+          description: No customer with this ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerNotFoundError"
+              examples:
+                customerNotFound:
+                  summary: Customer does not exist
+                  value:
+                    error: Customer not found
+                    customerId: 00000000-0000-4000-8000-000000000000
+                    code: 404
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+        "500":
+          description: Unexpected internal error while processing the request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                internalError:
+                  summary: Mediation error
+                  value:
+                    error: Internal server error
+                    code: 500
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+        "502":
+          description: The customer records backend returned an unexpected status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                badGateway:
+                  summary: Unexpected backend status
+                  value:
+                    error: Bad gateway. Unexpected response from upstream service
+                    code: 502
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+        "503":
+          description: "The customer records backend could not be reached, or is temporarily suspended after repeated connection failures"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                serviceUnavailable:
+                  summary: Backend unreachable
+                  value:
+                    error: Service unavailable. Upstream service is unreachable
+                    code: 503
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+        "504":
+          description: The customer records backend did not respond within 10 seconds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                gatewayTimeout:
+                  summary: Backend timed out
+                  value:
+                    error: Gateway timeout. Upstream service did not respond in time
+                    code: 504
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+      security:
+       -
+        default: []
+      x-auth-type: Application & Application User
+      x-throttling-tier: ReqRes
+  /{customerId}/dashboard:
+    get:
+      summary: Get customer dashboard
+      description: Returns the customer's details and the balance of each of their accounts.
+      parameters:
+       -
+        name: customerId
+        in: path
+        description: Customer record UUID
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: string
+          format: uuid
+        example: e46f08a1-2750-46c6-a2eb-21e1b11fe57a
+       -
+        name: X-Correlation-ID
+        in: header
+        description: |
+          **Leave empty when testing** or turn on CORS
+
+          Optional caller correlation ID (8-64 chars of A-Z a-z 0-9 . _ - :). Generated if missing or malformed.
+        required: false
+        style: simple
+        explode: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Customer and account balances. Accounts whose balance could not be retrieved have status UNAVAILABLE.
+          headers:
+            X-Correlation-ID:
+              style: simple
+              explode: false
+              schema:
+                type: string
+                example: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+              examples:
+                allAccounts:
+                  summary: All balances retrieved
+                  value:
+                    customerId: e46f08a1-2750-46c6-a2eb-21e1b11fe57a
+                    customer:
+                      name: Felix Omondi Onyango
+                      email: felix.onyango@example.com
+                      phone: "+254732345641"
+                      address:
+                        city: Nairobi
+                        county: Nairobi
+                        street: Mombasa Road
+                        country: Kenya
+                        postal_code: "00506"
+                      kra_pin: A212345678X
+                      lastname: Onyango
+                      firstname: Felix
+                      date_of_birth: 1989-01-09
+                      account_number:
+                       - "0051012695378"
+                      identification_number: "31278945"
+                      identification_document: ID
+                    accounts:
+                     -
+                      accountNumber: "0051012695378"
+                      status: ACTIVE
+                      balance:
+                        amount: 15250.75
+                        currency: KES
+                      requestId: 3f2b8c1e-9a4d-4b8e-9c21-5d7e8f9a0b1c
+                      timestamp: 2026-10-12T09:15:30.140+03:00
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+                accountUnavailable:
+                  summary: One balance could not be retrieved (database error)
+                  value:
+                    customerId: e46f08a1-2750-46c6-a2eb-21e1b11fe57a
+                    customer:
+                      name: Felix Omondi Onyango
+                      email: felix.onyango@example.com
+                      phone: "+254732345641"
+                      address:
+                        city: Nairobi
+                        county: Nairobi
+                        street: Mombasa Road
+                        country: Kenya
+                        postal_code: "00506"
+                      kra_pin: A212345678X
+                      lastname: Onyango
+                      firstname: Felix
+                      date_of_birth: 1989-01-09
+                      account_number:
+                       - "0051012695378"
+                       - "0051012695379"
+                      identification_number: "31278945"
+                      identification_document: ID
+                    accounts:
+                     -
+                      accountNumber: "0051012695378"
+                      status: ACTIVE
+                      balance:
+                        amount: 15250.75
+                        currency: KES
+                      requestId: 3f2b8c1e-9a4d-4b8e-9c21-5d7e8f9a0b1c
+                      timestamp: 2026-10-12T09:15:30.140+03:00
+                     -
+                      accountNumber: "0051012695379"
+                      status: UNAVAILABLE
+                      error: Balance could not be retrieved for this account
+                      code: 500
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+        "400":
+          description: customerId is not a UUID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidCustomerId:
+                  summary: customerId is not a UUID
+                  value:
+                    error: Invalid customerId. Expected a UUID.
+                    code: 400
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+        "404":
+          description: No customer with this ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                customerNotFound:
+                  summary: Customer does not exist
+                  value:
+                    error: Customer not found
+                    code: 404
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+        "500":
+          description: Unexpected internal error in the dashboard API
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                internalError:
+                  summary: Internal error
+                  value:
+                    error: Internal server error
+                    code: 500
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+        "502":
+          description: The customer service returned an unexpected status or failed with an internal error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                badGateway:
+                  summary: Unexpected customer service response
+                  value:
+                    error: Bad gateway. Unexpected response from customer service
+                    code: 502
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+        "503":
+          description: The customer records backend could not be reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                customerServiceUnavailable:
+                  summary: Customer records backend unreachable
+                  value:
+                    error: Customer service is unavailable. Try again later
+                    code: 503
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+        "504":
+          description: The customer records backend did not respond within 10 seconds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                customerServiceTimeout:
+                  summary: Customer records backend timed out
+                  value:
+                    error: Customer service is unavailable. Try again later
+                    code: 504
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+      security:
+       -
+        default: []
+      x-auth-type: Application & Application User
+      x-throttling-tier: ReqRes
+  /eligibility:
+    post:
+      summary: Check loan eligibility
+      description: Returns the eligibility decision for the applicant and loan request.
+      parameters:
+       -
+        name: X-Correlation-ID
+        in: header
+        description: |
+          **Leave empty when testing** or turn on CORS
+
+          Optional caller correlation ID (8-64 chars of A-Z a-z 0-9 . _ - :). Generated if missing or malformed.
+        required: false
+        style: simple
+        explode: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EligibilityRequest"
+        required: true
+      responses:
+        "200":
+          description: Eligibility decision
+          headers:
+            X-Correlation-ID:
+              style: simple
+              explode: false
+              schema:
+                type: string
+                example: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EligibilityResponse"
+              examples:
+                eligible:
+                  summary: Applicant is eligible
+                  value:
+                    status: ELIGIBLE
+                    riskBand: LOW
+                    requestedAmount:
+                      amount: 150000
+                      currency: KES
+                    indicativeAmount:
+                      amount: 150000
+                      currency: KES
+                    tenorMonths: 12
+                    instalment:
+                      amount: 14025.5
+                      currency: KES
+                    debtToIncomeRatio: 0.32
+                    reasons: Income and repayment history meet the product requirements
+                    nextSteps: Proceed to full loan application
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+        "400":
+          description: "Body is not valid JSON, or a required field is missing or has the wrong type"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidFields:
+                  summary: Field missing or wrong type
+                  value:
+                    error: Invalid request. One or more fields are missing or invalid
+                    code: 400
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+                invalidJson:
+                  summary: Body is not valid JSON
+                  value:
+                    error: Invalid request. Body is not valid JSON
+                    code: 400
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+        "415":
+          description: Content-Type is not application/json
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                unsupportedMediaType:
+                  summary: Request is not JSON
+                  value:
+                    error: Unsupported body type. Request must be application/json
+                    code: 415
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+        "500":
+          description: Unexpected internal error while processing the request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                internalError:
+                  summary: Mediation error
+                  value:
+                    error: Internal server error
+                    code: 500
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+        "502":
+          description: "The loan service returned a non-200 status (including SOAP faults), or its response failed the schema check"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                badGateway:
+                  summary: Unexpected loan service response
+                  value:
+                    error: Bad gateway. Unexpected response from loan service
+                    code: 502
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+        "503":
+          description: "The loan service could not be reached, or is temporarily suspended after repeated connection failures"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                serviceUnavailable:
+                  summary: Loan service unreachable
+                  value:
+                    error: Service unavailable. Upstream service is unreachable
+                    code: 503
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+        "504":
+          description: The loan service did not respond within 10 seconds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                gatewayTimeout:
+                  summary: Loan service timed out
+                  value:
+                    error: Gateway timeout. Upstream service did not respond in time
+                    code: 504
+                    requestId: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+                    timestamp: 2026-10-12T09:15:30.123+03:00
+      security:
+       -
+        default: []
+      x-auth-type: Application & Application User
+      x-throttling-tier: Unlimited
+  /applications:
+    post:
+      summary: Submit a loan application
+      description: Queues the application for an eligibility check and returns its applicationId.
+      parameters:
+       -
+        name: X-Correlation-ID
+        in: header
+        description: |
+          **Leave empty when testing** or turn on CORS
+
+          Optional caller correlation ID (8-64 chars of A-Z a-z 0-9 . _ - :). Generated if missing or malformed.
+          Becomes the applicationId.
+        required: false
+        style: simple
+        explode: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoanApplicationRequest"
+        required: true
+      responses:
+        "202":
+          description: Application accepted and queued for an eligibility check
+          headers:
+            X-Correlation-ID:
+              style: simple
+              explode: false
+              schema:
+                type: string
+                example: 78821580-948b-4c75-8257-e18bfedeab9e
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoanApplicationAccepted"
+        "400":
+          description: "Body is not valid JSON, or a required field is missing or invalid"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidFields:
+                  summary: Field missing or invalid
+                  value:
+                    error: Invalid request. One or more fields are missing or invalid
+                    code: 400
+                    details: "object has missing required properties (['kraPin'])"
+                    requestId: 78821580-948b-4c75-8257-e18bfedeab9e
+                    timestamp: 2026-10-13T17:33:48.717Z
+                invalidJson:
+                  summary: Body is not valid JSON
+                  value:
+                    error: Invalid request. Body is not valid JSON
+                    code: 400
+                    requestId: 78821580-948b-4c75-8257-e18bfedeab9e
+                    timestamp: 2026-10-13T17:33:48.717Z
+        "415":
+          description: Content-Type is not application/json
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Unexpected internal error while processing the request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: "The message broker is unavailable - nothing was queued, try again later"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                brokerDown:
+                  summary: Could not queue the application
+                  value:
+                    error: "Service unavailable. The application could not be queued, please try again"
+                    code: 503
+                    requestId: 78821580-948b-4c75-8257-e18bfedeab9e
+                    timestamp: 2026-10-13T17:33:48.717Z
+      security:
+       -
+        default: []
+      x-auth-type: Application & Application User
+      x-throttling-tier: Unlimited
+components:
+  schemas:
+    Error:
+      required:
+       - code
+       - error
+       - requestId
+       - timestamp
+      type: object
+      properties:
+        error:
+          type: string
+          example: Invalid request. One or more fields are missing or invalid
+        code:
+          type: integer
+          example: 400
+        details:
+          type: string
+          description: Extra detail about a validation error (only on some 400 responses)
+          example: "object has missing required properties (['kraPin'])"
+        requestId:
+          type: string
+          description: Correlation ID of the request (also sent in the X-Correlation-ID header)
+          example: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+        timestamp:
+          type: string
+          format: date-time
+          example: 2026-10-12T09:15:30.123+03:00
+    Money:
+      required:
+       - amount
+       - currency
+      type: object
+      properties:
+        amount:
+          type: number
+          example: 150000
+        currency:
+          type: string
+          example: KES
+    AccountBalance:
+      required:
+       - accountNumber
+       - balance
+       - requestId
+       - status
+       - timestamp
+      type: object
+      properties:
+        accountNumber:
+          type: string
+          example: "0051012695378"
+        status:
+          type: string
+          example: ACTIVE
+          enum:
+           - ACTIVE
+           - DORMANT
+           - CLOSED
+        balance:
+          $ref: "#/components/schemas/Money"
+        requestId:
+          type: string
+          description: ID generated by this API for the request
+          example: 3f2b8c1e-9a4d-4e7b-b1c2-5d6e7f8a9b0c
+        timestamp:
+          type: string
+          description: Time the request was received
+          format: date-time
+          example: 2026-10-12T09:15:30.123+03:00
+    AccountNotFoundError:
+      allOf:
+       -
+        $ref: "#/components/schemas/Error"
+       -
+        required:
+         - accountNumber
+        type: object
+        properties:
+          accountNumber:
+            type: string
+            example: "1234567890000"
+    Account:
+      type: object
+      properties:
+        accountNumber:
+          type: string
+          example: "0051012695378"
+        status:
+          type: string
+          example: ACTIVE
+          enum:
+           - ACTIVE
+           - DORMANT
+           - CLOSED
+           - UNAVAILABLE
+        balance:
+          type: object
+          properties:
+            amount:
+              type: number
+              example: 15250.75
+            currency:
+              type: string
+              example: KES
+          description: Not present when status is UNAVAILABLE
+        error:
+          type: string
+          description: Only present when status is UNAVAILABLE
+          example: Balance could not be retrieved for this account
+        code:
+          type: integer
+          description: |
+            HTTP status from AccountBalanceAPI, only present when status is UNAVAILABLE (400 account number in the customer record is not 13 digits, 404 account not found, 500 database error, 503 database unreachable or did not respond within 5 seconds)
+          example: 500
+        requestId:
+          type: string
+          description: AccountBalanceAPI request ID
+          example: 3f2b8c1e-9a4d-4b8e-9c21-5d7e8f9a0b1c
+        timestamp:
+          type: string
+          format: date-time
+          example: 2026-10-12T09:15:30.14+03:00
+    Customer:
+      type: object
+      properties:
+        name:
+          type: string
+          example: Felix Omondi Onyango
+        email:
+          type: string
+          example: felix.onyango@example.com
+        phone:
+          type: string
+          example: "+254732345641"
+        address:
+          type: object
+          properties:
+            city:
+              type: string
+              example: Nairobi
+            county:
+              type: string
+              example: Nairobi
+            street:
+              type: string
+              example: Mombasa Road
+            country:
+              type: string
+              example: Kenya
+            postal_code:
+              type: string
+              example: "00506"
+        kra_pin:
+          type: string
+          example: A212345678X
+        lastname:
+          type: string
+          example: Onyango
+        firstname:
+          type: string
+          example: Felix
+        date_of_birth:
+          type: string
+          format: date
+          example: 1989-01-09
+        account_number:
+          type: array
+          items:
+            type: string
+            example: "0051012695378"
+        identification_number:
+          type: string
+          example: "31278945"
+        identification_document:
+          type: string
+          example: ID
+    Dashboard:
+      type: object
+      properties:
+        customerId:
+          type: string
+          example: e46f08a1-2750-46c6-a2eb-21e1b11fe57a
+        customer:
+          $ref: "#/components/schemas/Customer"
+        accounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Account"
+        requestId:
+          type: string
+          description: Correlation ID of the request (also sent in the X-Correlation-ID header)
+          example: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+        timestamp:
+          type: string
+          format: date-time
+          example: 2026-10-12T09:15:30.123+03:00
+    CustomerRecord:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              example: e46f08a1-2750-46c6-a2eb-21e1b11fe57a
+            collection_id:
+              type: string
+              example: 872ef233-86b1-4415-8a1e-47f1d3e84696
+            project_id:
+              type: integer
+              example: 53942
+            app_user_id:
+              type: string
+              nullable: true
+              example: null
+            created_by:
+              type: integer
+              example: 147235
+            created_at:
+              type: string
+              format: date-time
+              example: 2026-10-11T17:02:14.913Z
+            updated_at:
+              type: string
+              format: date-time
+              example: 2026-10-11T17:02:14.913Z
+            deleted_at:
+              type: string
+              format: date-time
+              nullable: true
+              example: null
+            data:
+              $ref: "#/components/schemas/Customer"
+    CustomerNotFoundError:
+      allOf:
+       -
+        $ref: "#/components/schemas/Error"
+       -
+        required:
+         - customerId
+        type: object
+        properties:
+          customerId:
+            type: string
+            example: 00000000-0000-4000-8000-000000000000
+    LoanApplicationAccepted:
+      type: object
+      properties:
+        applicationId:
+          type: string
+          example: 78821580-948b-4c75-8257-e18bfedeab9e
+        status:
+          type: string
+          enum:
+           - RECEIVED
+        message:
+          type: string
+          example: Loan application received. Eligibility will be checked shortly.
+        timestamp:
+          type: string
+          format: date-time
+          example: 2026-10-13T17:33:48.585Z
+    EligibilityRequest:
+      required:
+       - applicant
+       - channelId
+       - consentToCreditAssessment
+       - employmentDetails
+       - loanRequest
+      type: object
+      properties:
+        channelId:
+          type: string
+          example: MOBILE
+        applicant:
+          required:
+           - county
+           - customerReference
+           - dateOfBirth
+           - firstName
+           - kraPin
+           - lastName
+           - mobileNumber
+           - nationalIdLastFour
+           - residencyStatus
+          type: object
+          properties:
+            customerReference:
+              type: string
+              example: CUST-000123
+            firstName:
+              type: string
+              example: Felix
+            lastName:
+              type: string
+              example: Onyango
+            nationalIdLastFour:
+              type: string
+              example: "8945"
+            kraPin:
+              type: string
+              example: A212345678X
+            dateOfBirth:
+              type: string
+              format: date
+              example: 1989-01-09
+            mobileNumber:
+              type: string
+              example: "+254732345641"
+            emailAddress:
+              type: string
+              description: Optional. Sent to the backend as an empty element when omitted.
+              example: felix.onyango@example.com
+            county:
+              type: string
+              example: Nairobi
+            residencyStatus:
+              type: string
+              example: RESIDENT
+              enum:
+               - RESIDENT
+               - NON_RESIDENT
+        employmentDetails:
+          required:
+           - employerOrBusinessName
+           - employmentType
+           - incomeVerified
+           - monthlyGrossIncome
+           - monthlyNetIncome
+           - monthsWithEmployerOrBusiness
+          type: object
+          properties:
+            employmentType:
+              type: string
+              example: SALARIED
+              enum:
+               - SALARIED
+               - SELF_EMPLOYED
+               - CASUAL
+               - UNEMPLOYED
+            employerOrBusinessName:
+              type: string
+              example: Acme Ltd
+            monthsWithEmployerOrBusiness:
+              type: integer
+              example: 36
+            monthlyGrossIncome:
+              $ref: "#/components/schemas/Money"
+            monthlyNetIncome:
+              $ref: "#/components/schemas/Money"
+            otherMonthlyIncome:
+              $ref: "#/components/schemas/Money"
+            incomeVerified:
+              type: boolean
+              example: true
+        loanRequest:
+          required:
+           - existingObligations
+           - productCode
+           - purpose
+           - repaymentMethod
+           - requestedAmount
+           - requestedTenorMonths
+          type: object
+          properties:
+            productCode:
+              type: string
+              example: PL-STD-12
+            requestedAmount:
+              $ref: "#/components/schemas/Money"
+            requestedTenorMonths:
+              type: integer
+              example: 12
+            purpose:
+              type: string
+              example: School fees
+            repaymentMethod:
+              type: string
+              example: MPESA
+              enum:
+               - MPESA
+               - BANK_TRANSFER
+               - CHECK_OFF
+               - STANDING_ORDER
+            existingObligations:
+              required:
+               - daysPastDue
+               - hasOverdueFacility
+               - monthlyLoanRepayments
+               - monthlyMobileLoanRepayments
+               - monthlyOtherDebtPayments
+              type: object
+              properties:
+                monthlyLoanRepayments:
+                  $ref: "#/components/schemas/Money"
+                monthlyMobileLoanRepayments:
+                  $ref: "#/components/schemas/Money"
+                monthlyOtherDebtPayments:
+                  $ref: "#/components/schemas/Money"
+                hasOverdueFacility:
+                  type: boolean
+                  example: false
+                daysPastDue:
+                  type: integer
+                  example: 0
+        consentToCreditAssessment:
+          type: boolean
+          description: Customer's consent to the credit assessment (Kenya DPA 2019).
+          example: true
+    EligibilityResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ELIGIBLE
+        riskBand:
+          type: string
+          example: LOW
+        requestedAmount:
+          $ref: "#/components/schemas/Money"
+        indicativeAmount:
+          $ref: "#/components/schemas/Money"
+        tenorMonths:
+          type: integer
+          example: 12
+        instalment:
+          $ref: "#/components/schemas/Money"
+        debtToIncomeRatio:
+          type: number
+          example: 0.32
+        reasons:
+          type: string
+          example: Income and repayment history meet the product requirements
+        nextSteps:
+          type: string
+          example: Proceed to full loan application
+        requestId:
+          type: string
+          description: Correlation ID of the request (also sent in the X-Correlation-ID header)
+          example: 9f1c2b7e-3a4d-4b8e-9c21-5d7e8f9a0b1c
+        timestamp:
+          type: string
+          format: date-time
+          example: 2026-10-12T09:15:30.123+03:00
+    LoanApplicationRequest:
+      required:
+       - customer
+       - employment
+       - loan
+      type: object
+      properties:
+        customer:
+          required:
+           - county
+           - dateOfBirth
+           - firstName
+           - kraPin
+           - lastName
+           - mobileNumber
+           - nationalIdLastFour
+           - reference
+          type: object
+          properties:
+            reference:
+              type: string
+              example: CIF000123
+            firstName:
+              type: string
+              example: Jane
+            lastName:
+              type: string
+              example: Wanjiku
+            nationalIdLastFour:
+              pattern: "^[0-9]{4}$"
+              type: string
+              example: "5678"
+            kraPin:
+              type: string
+              example: A012345678Z
+            dateOfBirth:
+              type: string
+              format: date
+              example: 1990-05-14
+            mobileNumber:
+              type: string
+              example: "+254712345678"
+            county:
+              type: string
+              example: Nairobi
+        employment:
+          required:
+           - employer
+           - grossIncome
+           - monthsEmployed
+           - netIncome
+           - type
+          type: object
+          properties:
+            type:
+              type: string
+              example: SALARIED
+              enum:
+               - SALARIED
+               - SELF_EMPLOYED
+               - CASUAL
+               - UNEMPLOYED
+            employer:
+              type: string
+              example: Acme Ltd
+            monthsEmployed:
+              minimum: 0
+              type: integer
+              example: 36
+            grossIncome:
+              minimum: 0
+              type: number
+              example: 120000
+            netIncome:
+              minimum: 0
+              type: number
+              example: 95000
+        loan:
+          required:
+           - amount
+           - existingMonthlyDebt
+           - productCode
+           - purpose
+           - repaymentMethod
+           - tenorMonths
+          type: object
+          properties:
+            productCode:
+              type: string
+              example: PERSONAL
+            amount:
+              minimum: 1
+              type: number
+              description: Amount in KES
+              example: 50000
+            tenorMonths:
+              minimum: 1
+              type: integer
+              example: 12
+            purpose:
+              type: string
+              example: School fees
+            repaymentMethod:
+              type: string
+              example: MPESA
+              enum:
+               - MPESA
+               - BANK_TRANSFER
+               - CHECK_OFF
+               - STANDING_ORDER
+            existingMonthlyDebt:
+              minimum: 0
+              type: number
+              description: "Monthly repayments on existing loans, in KES"
+              example: 5000
+  securitySchemes:
+    default:
+      type: oauth2
+      flows:
+        implicit:
+          authorizationUrl: https://test.com
+          scopes: {}
+          x-scopes-bindings: {}

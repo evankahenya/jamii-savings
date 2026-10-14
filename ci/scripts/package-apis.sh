@@ -53,3 +53,17 @@ for f in "$RATE_LIMIT_DIR"/*.yaml; do
   sed 's/\r$//' "$f" > "$TIERS_OUT/$(basename "$f")"
   ok "rate-limiting tier $(basename "$f" .yaml)"
 done
+
+# API Products - imported by deploy.sh AFTER the APIs they group
+PRODUCTS_OUT="$DIST_DIR/api-products"
+rm -rf "${PRODUCTS_OUT:?}"; mkdir -p "$PRODUCTS_OUT"
+for prod in $(product_names); do
+  dst="$STAGE/$prod"
+  mkdir -p "$dst/Definitions"
+  for f in api_product.yaml api_product_meta.yaml deployment_environments.yaml Definitions/swagger.yaml; do
+    sed 's/\r$//' "$APIM_PRODUCTS_DIR/$prod/$f" > "$dst/$f"
+  done
+  apictl bundle -s "$dst" -d "$PRODUCTS_OUT" >/dev/null
+  ok "API product $(ls "$PRODUCTS_OUT"/"$prod"_*.zip | xargs -n1 basename)"
+done
+rm -rf "${STAGE:?}"

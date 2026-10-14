@@ -2,8 +2,10 @@
 // Jamii Savings - ONE pipeline for ALL the APIs.
 //
 // The APIs it handles = the folders in Jamii_WSO2_Project/apim-apis/
-// (AccountBalanceAPI, CustomersAPI, LoansAPI).
-// Adding an API = adding a folder there; nothing in this file changes.
+// (AccountBalanceAPI, CustomersAPI, LoansAPI), plus the API Products in
+// Jamii_WSO2_Project/apim-api-products/ (JamiiProducts) and the custom
+// rate-limiting tiers in Jamii_WSO2_Project/apim-throttling-policies/ (ReqRes).
+// Adding an API or product = adding a folder there; nothing in this file changes.
 //
 //   Validate -> Build MI CAR -> Test -> Package APIM APIs
 //            -> Deploy: dev -> [approve] -> Deploy: uat -> [approve] -> Deploy: prod

@@ -5,6 +5,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MI_PROJECT="$REPO_ROOT/Jamii_WSO2_Project"
 APIM_APIS_DIR="$MI_PROJECT/apim-apis"
+APIM_PRODUCTS_DIR="$MI_PROJECT/apim-api-products"         # API Products (group APIs; imported after them)
 APIM_POLICIES_DIR="$MI_PROJECT/apim-policies"
 RATE_LIMIT_DIR="$MI_PROJECT/apim-throttling-policies"   # custom rate-limiting tiers (apictl format)
 # API-level ("advanced") tiers every API Manager already has - no file needed for these
@@ -24,6 +25,12 @@ yaml_value() { sed -n "s/^  $2: *//p" "$1" | tr -d '\r' | head -1; }
 
 # The APIs this pipeline manages = one folder per API under apim-apis/
 api_names() { find "$APIM_APIS_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort; }
+# ...and one folder per API Product under apim-api-products/ (may not exist)
+product_names() { [ -d "$APIM_PRODUCTS_DIR" ] && find "$APIM_PRODUCTS_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort || true; }
+# the apictl yaml of an API or API Product (smoke tests address both by name)
+apim_yaml() { if [ -f "$APIM_APIS_DIR/$1/api.yaml" ]; then echo "$APIM_APIS_DIR/$1/api.yaml"; else echo "$APIM_PRODUCTS_DIR/$1/api_product.yaml"; fi; }
+# APIs used by a product = the "    name:" entries under its apis: list
+product_apis() { sed -n 's/^    name: *//p' "$APIM_PRODUCTS_DIR/$1/api_product.yaml" | tr -d '\r'; }
 
 wait_until() {  # wait_until <what> <timeout seconds> <command...>  - retries every 10s until the command succeeds
   local what=$1 timeout=$2 waited=0; shift 2
@@ -128,4 +135,44 @@ apim_ready() {  # APIM is up (health endpoint) AND accepts an apictl login
 
 apim_api_exists() {  # apim_api_exists <name>   (the query is a partial match - grep -x makes it exact)
   apictl get apis -e "$TARGET_ENV" -k -q "name:$1" -l 100 --format '{{.Name}}' 2>/dev/null | grep -qx "$1"
+}
+
+# Security schemes listed under "securityScheme:" in an api.yaml / api_product.yaml
+# (e.g. oauth2, api_key, oauth_basic_auth_api_key_mandatory), one per line
+security_schemes() {
+  awk '/^  securityScheme:/{f=1; next} f && /^ *- /{sub(/^ *- */, ""); print; next} f{exit}' "$1" | tr -d '\r'
+}
+# true when the API accepts ONLY API keys (API Key security without OAuth2)
+uses_api_key_only() {
+  local s; s=$(security_schemes "$1")
+  grep -qx api_key <<<"$s" && ! grep -qx oauth2 <<<"$s"
+}
+
+# Generates an API key for a Developer Portal application (apictl can't do this).
+# Uses the Developer Portal REST API: register a client, get a token, find the app, generate.
+devportal_api_key() {  # devportal_api_key <application name>  -> prints the key
+  local reg cid cs tok app
+  reg=$(curl -sk -u "$APIM_USER:$APIM_PASS" -H 'Content-Type: application/json' \
+        -d '{"callbackUrl":"https://localhost","clientName":"jamii_ci_smoke","owner":"'"$APIM_USER"'","grantType":"password refresh_token","saasApp":true}' \
+        "$APIM_URL/client-registration/v0.17/register") || return 1
+  cid=$(jq -r .clientId <<<"$reg"); cs=$(jq -r .clientSecret <<<"$reg")
+  tok=$(curl -sk -u "$cid:$cs" --data-urlencode grant_type=password --data-urlencode "username=$APIM_USER" \
+        --data-urlencode "password=$APIM_PASS" --data-urlencode 'scope=apim:subscribe apim:api_key apim:app_manage' \
+        "$APIM_URL/oauth2/token" | jq -r '.access_token // empty')
+  [ -n "$tok" ] || return 1
+  app=$(curl -sk -H "Authorization: Bearer $tok" "$APIM_URL/api/am/devportal/v3/applications?query=$1" \
+        | jq -r --arg n "$1" '.list[] | select(.name == $n) | .applicationId' | head -1)
+  [ -n "$app" ] || return 1
+  # APIM 4.7 requires a key name
+  curl -sk -H "Authorization: Bearer $tok" -H 'Content-Type: application/json' \
+       -d "{\"keyName\":\"jamii-ci-$(date +%s)\",\"validityPeriod\":3600,\"additionalProperties\":{}}" \
+       "$APIM_URL/api/am/devportal/v3/applications/$app/api-keys/PRODUCTION/generate" | jq -r '.apikey // empty'
+}
+
+# Exports an API Product to <dest zip>; fails if it doesn't exist. (Export is used as the
+# existence check because the product LIST is search-indexed and lags a few seconds.)
+apim_export_product() {  # apim_export_product <name> <dest zip>
+  local zip="$HOME/.wso2apictl/exported/api-products/$TARGET_ENV/${1}_1.0.0.zip"
+  rm -f "$zip"
+  apictl export api-product -n "$1" -v 1.0.0 -e "$TARGET_ENV" -k >/dev/null 2>&1 && [ -f "$zip" ] && mv "$zip" "$2"
 }

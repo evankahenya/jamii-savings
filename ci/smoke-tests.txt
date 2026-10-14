@@ -12,3 +12,7 @@ CustomersAPI         | GET  | /not-a-uuid/dashboard  | 400 |
 CustomersAPI         | GET  | /not-a-uuid            | 400 |
 LoansAPI             | POST | /eligibility           | 400 | {}
 LoansAPI             | POST | /applications          | 400 | {}
+# API Product (gateway only - one call into each API it groups)
+JamiiProducts        | GET  | /0022012569822/balance | 200 |
+JamiiProducts        | GET  | /not-a-uuid            | 400 |
+JamiiProducts        | POST | /eligibility           | 400 | {}

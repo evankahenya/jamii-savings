@@ -126,15 +126,27 @@ Validate -> Build MI CAR -> Test -> Package APIM APIs
 
 | Stage | Does |
 |---|---|
-| Validate | XML well-formed; every API has an MI artifact, OpenAPI file, apictl project and per-env params; APIM context == MI context; policies exist |
+| Validate | XML well-formed; every API has an MI artifact, OpenAPI file, apictl project and per-env params; APIM context == MI context; policies and rate-limiting tiers exist; API Products only use APIs in the repo and don't bypass an API's rate limit |
 | Build MI CAR | `mvn clean install` with the WSO2 Maven plugins |
 | Test | Synapse unit tests (`mvn test`). None are written yet. |
-| Package | One apictl archive per API (OpenAPI + policies copied in from their single source) |
-| Deploy: \<env\> | All-or-nothing deploy of the CAR + all 4 APIs, then smoke tests (see below) |
+| Package | One apictl archive per API and per API Product (OpenAPI + policies copied in from their single source), plus the custom rate-limiting tiers |
+| Deploy: \<env\> | All-or-nothing deploy of the CAR + the 3 APIs + the API Product, then smoke tests (see below) |
 
 **One pipeline for all APIs.** The pipeline handles every folder in
-`Jamii_WSO2_Project/apim-apis/`. To add an API, add a folder there plus a line in
-`ci/smoke-tests.txt`. The Jenkinsfile doesn't change.
+`Jamii_WSO2_Project/apim-apis/` (APIs) and `Jamii_WSO2_Project/apim-api-products/` (API
+Products), and every tier in `Jamii_WSO2_Project/apim-throttling-policies/`. To add an API
+or product, add a folder there plus a line in `ci/smoke-tests.txt`. The Jenkinsfile
+doesn't change.
+
+**Changed something in the Publisher?** Portal changes live in API Manager's database, not
+in git, and the next pipeline run overwrites them. Copy them into the repo first, then
+commit (run from the repo root, in Command Prompt):
+
+```bash
+docker run --rm -u root --add-host host.docker.internal:host-gateway -v "%cd%:/repo" -w /repo --entrypoint bash jamii-jenkins:2.541.3 ci/scripts/pull-api.sh AccountBalanceAPI
+```
+
+For an API Product, add `--product`: `... ci/scripts/pull-api.sh --product JamiiProducts`.
 
 **Environments.** `ci/environments/<env>.properties` hold the URLs and Jenkins credential
 ids. dev has `ENABLED=true`. uat/prod are placeholders (`ENABLED=false`): their stages run
@@ -143,15 +155,19 @@ environment.
 
 **No partial deploys** (`ci/scripts/deploy.sh`):
 1. Pre-flight: artifacts present, MI and APIM reachable, logins OK. Nothing has changed yet.
-2. Back up the current version of every API from APIM.
+2. Create/update the custom rate-limiting tiers (e.g. ReqRes), then back up the current
+   version of every API and API Product from APIM.
 3. Deploy the CAR to MI through the Management API, and wait until MI reports it active.
-4. Import/update every API with `apictl` (new revision, deployed to the gateway).
-5. Smoke tests: each API once directly on MI and once through the gateway with a real token.
+4. Import/update every API with `apictl` (new revision, deployed to the gateway), then the
+   API Products, which depend on the APIs.
+5. Smoke tests: each API once directly on MI and once through the gateway, plus calls through
+   the API Product. The test sends a real OAuth token, or an API key for APIs secured with
+   API Key only (like AccountBalanceAPI).
 
-If **anything** in steps 2–5 fails, every API already touched is restored from the backup
-(or deleted if it was new), MI goes back to the last good CAR, and the build fails. This
-was tested by deploying a deliberately broken API: the deploy stopped at that API and all
-earlier changes were reverted.
+If **anything** in steps 2–5 fails, every API and product already touched is restored from
+the backup (or deleted if it was new), MI goes back to the last good CAR, and the build
+fails. This was tested by deploying deliberately broken APIs: the deploy stopped there and
+all earlier changes, including the API Product, were reverted.
 
 You can run the same scripts without Jenkins too (inside the Jenkins image they have
 everything they need). See the header of each script in `ci/scripts/`.

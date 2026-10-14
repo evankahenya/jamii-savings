@@ -1,0 +1,184 @@
+# API Product grouping all Jamii APIs (apictl project format, APIM 4.7). Imported by the pipeline
+# AFTER the APIs it uses (listed under apis: by name + version). Instance-specific IDs removed.
+# The two CustomersAPI resources use the ReqRes tier here too - a product has its own copy of each
+# resource, so without it calls through /product would bypass the reqres.in limit.
+type: api_product
+version: v4.7.0
+data:
+  name: JamiiProducts
+  displayName: JamiiProducts
+  context: /product
+  version: 1.0.0
+  provider: admin
+  hasThumbnail: false
+  state: PUBLISHED
+  enableSchemaValidation: false
+  isDefaultVersion: true
+  isRevision: false
+  revisionId: 0
+  responseCachingEnabled: false
+  cacheTimeout: 300
+  visibility: PUBLIC
+  visibleRoles: []
+  visibleTenants: []
+  accessControl: NONE
+  accessControlRoles: []
+  transport:
+   - http
+   - https
+  tags: []
+  policies:
+   - Unlimited
+  authorizationHeader: Authorization
+  apiKeyHeader: ApiKey
+  securityScheme:
+   - oauth_basic_auth_api_key_mandatory
+   - oauth2
+  subscriptionAvailability: ALL_TENANTS
+  subscriptionAvailableTenants: []
+  additionalProperties: []
+  additionalPropertiesMap: {}
+  businessInformation: {}
+  corsConfiguration:
+    corsConfigurationEnabled: false
+    accessControlAllowOrigins:
+     - '*'
+    accessControlAllowCredentials: false
+    accessControlAllowHeaders:
+     - authorization
+     - Access-Control-Allow-Origin
+     - Content-Type
+     - SOAPAction
+     - apikey
+     - Internal-Key
+    accessControlAllowMethods:
+     - GET
+     - PUT
+     - POST
+     - DELETE
+     - PATCH
+     - OPTIONS
+  gatewayVendor: wso2
+  apis:
+   -
+    name: CustomersAPI
+    version: 1.0.0
+    operations:
+     -
+      id: ""
+      target: "/{customerId}"
+      verb: GET
+      authType: Application & Application User
+      throttlingPolicy: ReqRes
+      scopes: []
+      usedProductIds: []
+      operationPolicies:
+        request: []
+        response:
+         -
+          policyName: jamiiHeaderSecurityPolicies
+          policyVersion: v1
+          parameters: {}
+        fault:
+         -
+          policyName: jamiiBackendErrorPolicy
+          policyVersion: v1
+          parameters: {}
+      operationHubPolicies: []
+     -
+      id: ""
+      target: "/{customerId}/dashboard"
+      verb: GET
+      authType: Application & Application User
+      throttlingPolicy: ReqRes
+      scopes: []
+      usedProductIds: []
+      operationPolicies:
+        request: []
+        response:
+         -
+          policyName: jamiiHeaderSecurityPolicies
+          policyVersion: v1
+          parameters: {}
+        fault:
+         -
+          policyName: jamiiBackendErrorPolicy
+          policyVersion: v1
+          parameters: {}
+      operationHubPolicies: []
+   -
+    name: AccountBalanceAPI
+    version: 1.0.0
+    operations:
+     -
+      id: ""
+      target: "/{accountNumber}/balance"
+      verb: GET
+      authType: Application & Application User
+      throttlingPolicy: Unlimited
+      scopes: []
+      usedProductIds: []
+      operationPolicies:
+        request: []
+        response:
+         -
+          policyName: jamiiHeaderSecurityPolicies
+          policyVersion: v1
+          parameters: {}
+        fault:
+         -
+          policyName: jamiiBackendErrorPolicy
+          policyVersion: v1
+          parameters: {}
+      operationHubPolicies: []
+   -
+    name: LoansAPI
+    version: 1.0.0
+    operations:
+     -
+      id: ""
+      target: /eligibility
+      verb: POST
+      authType: Application & Application User
+      throttlingPolicy: Unlimited
+      scopes: []
+      usedProductIds: []
+      operationPolicies:
+        request: []
+        response:
+         -
+          policyName: jamiiHeaderSecurityPolicies
+          policyVersion: v1
+          parameters: {}
+        fault:
+         -
+          policyName: jamiiBackendErrorPolicy
+          policyVersion: v1
+          parameters: {}
+      operationHubPolicies: []
+     -
+      id: ""
+      target: /applications
+      verb: POST
+      authType: Application & Application User
+      throttlingPolicy: Unlimited
+      scopes: []
+      usedProductIds: []
+      operationPolicies:
+        request: []
+        response:
+         -
+          policyName: jamiiHeaderSecurityPolicies
+          policyVersion: v1
+          parameters: {}
+        fault:
+         -
+          policyName: jamiiBackendErrorPolicy
+          policyVersion: v1
+          parameters: {}
+      operationHubPolicies: []
+  scopes: []
+  categories: []
+  audiences:
+   - all
+  egress: false
