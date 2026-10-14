@@ -1,5 +1,3 @@
-# Per-environment settings, used with:  apictl import api ... -e <env> --params params.yaml
-# 'mi' is the MI service name on each environment's own Docker network.
 environments:
   - name: dev
     configs:

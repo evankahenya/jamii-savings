@@ -1,11 +1,4 @@
-# =====================================================================
-# Jenkins (CI/CD) - separate from the environments on purpose: one Jenkins
-# deploys to dev, uat and prod. Start it from this folder:
-#   docker compose up -d --build        ->  http://localhost:8081  (admin / admin)
-#
-# Jenkins reaches the environments through their published ports on your PC
-# (host.docker.internal), the same way it would reach real remote servers.
-# =====================================================================
+# docker compose up -d --build  ->  http://localhost:8081 (admin/admin)
 name: jamii-jenkins
 
 services:
@@ -17,12 +10,9 @@ services:
         -Xmx768m
         -Djenkins.install.runSetupWizard=false
         -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true
-      # Where the pipeline gets the code. Default: this repo, mounted read-only at /repo
-      # (only COMMITTED changes are seen). For GitHub use e.g.
-      #   JAMII_GIT_URL=https://github.com/<you>/jamii-savings.git
+      # builds what is committed in the mounted repo; set JAMII_GIT_URL to use GitHub instead
       JAMII_GIT_URL: ${JAMII_GIT_URL:-file:///repo}
       JAMII_GIT_BRANCH: ${JAMII_GIT_BRANCH:-*/main}
-      # true = run the pipeline automatically the first time Jenkins starts (job never built yet)
       JAMII_AUTO_BUILD: ${JAMII_AUTO_BUILD:-true}
       JENKINS_URL: http://localhost:${JENKINS_PORT:-8081}/
       JENKINS_ADMIN_USER: ${JENKINS_ADMIN_USER:-admin}
@@ -32,12 +22,12 @@ services:
       MI_DEV_USER: ${MI_DEV_USER:-admin}
       MI_DEV_PASSWORD: ${MI_DEV_PASSWORD:-admin}
     ports:
-      - "${JENKINS_PORT:-8081}:8080"    # 8081 on the host: 8080 is often taken already
+      - "${JENKINS_PORT:-8081}:8080"
     volumes:
       - jenkins-home:/var/jenkins_home
       - ${JAMII_REPO_PATH:-../..}:/repo:ro
     extra_hosts:
-      - "host.docker.internal:host-gateway"   # needed on Linux; Docker Desktop has it built in
+      - "host.docker.internal:host-gateway"
     mem_limit: 1500m
     restart: unless-stopped
 

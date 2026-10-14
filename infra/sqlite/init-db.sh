@@ -1,7 +1,5 @@
 #!/bin/sh
-# Creates the Jamii SQLite database inside the shared volume from schema.sql + seed.sql.
-# Runs once per `docker compose up`; does nothing if the DB already exists
-# (set RESET_DB=true to rebuild it from scratch).
+# Creates Jamii_db from schema.sql + seed.sql if it doesn't exist (RESET_DB=true recreates it)
 set -eu
 
 DB=/data/Jamii_db
@@ -22,7 +20,6 @@ fi
 echo "[sqlite-init] row counts:"
 sqlite3 "$DB" "SELECT 'branch', COUNT(*) FROM branch UNION ALL SELECT 'customer', COUNT(*) FROM customer UNION ALL SELECT 'account', COUNT(*) FROM account;"
 
-# MI runs as the non-root 'wso2carbon' user, and SQLite needs write access
-# to the folder (for its journal file), so open up permissions on the volume.
+# MI runs as a non-root user and SQLite needs to write its journal next to the DB
 chmod 777 /data
 chmod 666 "$DB"

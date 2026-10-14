@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <endpoint xmlns="http://ws.apache.org/ns/synapse" name="AccountDataServiceEP">
-    <!-- uri.var.accountNumber is populated automatically from the API path parameter.
-         Timeout is shorter than AccountBalanceAPIEP (10s) so a slow DB comes back as AccountBalanceAPI's 503
-         and the CustomersAPI dashboard can flag just that account -->
+    <!-- shorter timeout than AccountBalanceAPIEP so a slow DB returns 503 -->
     <http method="get" uri-template="http://localhost:8290/services/AccountDataService/accounts/{uri.var.accountNumber}">
         <timeout>
             <duration>5000</duration>

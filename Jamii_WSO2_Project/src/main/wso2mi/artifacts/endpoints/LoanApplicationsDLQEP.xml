@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <endpoint xmlns="http://ws.apache.org/ns/synapse" name="LoanApplicationsDLQEP">
-    <!-- JMS queue LoanApplicationsDLQ: loan application events that could not be processed (bad data, rejected by the API, retries used up).
-         Uses the "myQueueSender" connection factory from deployment.toml (broker URL + login live there) -->
+    <!-- events that couldn't be processed -->
     <address uri="jms:/LoanApplicationsDLQ?transport.jms.ConnectionFactory=myQueueSender&amp;transport.jms.DestinationType=queue"/>
 </endpoint>

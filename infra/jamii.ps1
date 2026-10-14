@@ -1,16 +1,6 @@
 <#
 .SYNOPSIS
-  OPTIONAL shortcuts for the Jamii docker setup. Run from the infra folder.
-  Everything here is plain `docker compose` underneath - the commands it runs are printed.
-
-.EXAMPLE
-  .\jamii.ps1 up dev            # = docker compose --env-file env/dev.env up -d --build
-  .\jamii.ps1 status dev        # containers + health
-  .\jamii.ps1 logs dev mi       # follow MI logs (Ctrl+C to stop)
-  .\jamii.ps1 rebuild-car dev   # rebuild the .car from source and hot-deploy it to MI
-  .\jamii.ps1 reset-db dev      # rebuild Jamii_db from schema.sql + seed.sql
-  .\jamii.ps1 down dev          # stop (data volumes are kept)
-  .\jamii.ps1 up uat -Force     # uat/prod are placeholders; -Force to really start them
+  Shortcuts for docker compose, e.g. .\jamii.ps1 up dev | status | logs dev mi | rebuild-car | reset-db | down
 #>
 param(
     [Parameter(Mandatory = $true, Position = 0)]
@@ -33,13 +23,11 @@ $EnvFile  = "env/$EnvName.env"
 
 function Invoke-Compose([string[]]$Arguments) {
     $all = @('compose', '--env-file', $EnvFile)
-    # also pick up local secrets (.env) - an explicit --env-file disables the automatic .env loading
     if (Test-Path (Join-Path $InfraDir '.env')) { $all += @('--env-file', '.env') }
     $all += $Arguments
     Write-Host "> docker $($all -join ' ')" -ForegroundColor DarkGray
     Push-Location $InfraDir
-    # docker writes progress to stderr; in PowerShell 5.1 that must not count as a failure,
-    # so rely on the exit code only.
+    # docker writes progress to stderr, which PowerShell 5.1 treats as an error
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try { & docker @all }
@@ -63,7 +51,6 @@ switch ($Command) {
         Invoke-Compose $logArgs
     }
     'rebuild-car' {
-        # MI notices the replaced .car in its carbonapps volume and redeploys it (~15s)
         Invoke-Compose @('run', '--rm', '-e', 'FORCE_CAR_BUILD=true', 'car-build')
         Write-Host "Done. Watch the redeploy with: .\jamii.ps1 logs $EnvName mi" -ForegroundColor Green
     }

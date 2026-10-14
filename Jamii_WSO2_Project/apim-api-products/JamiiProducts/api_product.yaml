@@ -1,7 +1,4 @@
-# API Product grouping all Jamii APIs (apictl project format, APIM 4.7). Imported by the pipeline
-# AFTER the APIs it uses (listed under apis: by name + version). Instance-specific IDs removed.
-# The two CustomersAPI resources use the ReqRes tier here too - a product has its own copy of each
-# resource, so without it calls through /product would bypass the reqres.in limit.
+# customer resources use ReqRes too, otherwise the product would bypass the limit
 type: api_product
 version: v4.7.0
 data:

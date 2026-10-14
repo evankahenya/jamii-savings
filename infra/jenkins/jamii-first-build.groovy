@@ -1,10 +1,4 @@
-// Runs when Jenkins starts. On the FIRST start (job never built) it runs the
-// jamii-api-deploy pipeline once, so the APIs end up in MI + APIM without anyone
-// clicking Build. Later restarts don't redeploy. Turn off with JAMII_AUTO_BUILD=false.
-//
-// It waits until Jenkins has fully started: a build scheduled earlier is thrown away
-// when Jenkins loads its build queue. The pipeline itself waits for MI/APIM to be
-// ready, so it doesn't matter if the platform is still starting.
+// Runs the pipeline once on Jenkins' first start (JAMII_AUTO_BUILD=false to disable)
 import hudson.init.InitMilestone
 import hudson.model.Cause
 import hudson.model.CauseAction
@@ -19,12 +13,12 @@ if ((System.getenv('JAMII_AUTO_BUILD') ?: 'true') != 'true') {
 
 Thread.start('jamii-first-build') {
     def jenkins = Jenkins.get()
+    // builds queued before startup completes are discarded
     while (jenkins.initLevel != InitMilestone.COMPLETED) {
         sleep(2000)
     }
-    sleep(5000)   // let the configuration-as-code job setup settle
+    sleep(5000)
 
-    // a background thread runs as "anonymous", which may not see jobs - act as SYSTEM
     def acl = ACL.as2(ACL.SYSTEM2)
     try {
         def job = jenkins.getItemByFullName('jamii-api-deploy')

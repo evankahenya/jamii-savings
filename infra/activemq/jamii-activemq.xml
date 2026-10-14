@@ -1,19 +1,11 @@
-<!--
-    Jamii ActiveMQ broker config = the image's default activemq.xml plus ONE addition:
-    the delayed-retry rule for LoanApplicationsRetryQueue (see destinationPolicy below).
-
-    compose.yaml mounts this file next to the default one and starts the broker with
-    `activemq console xbean:file:.../jamii-activemq.xml`. We don't overwrite activemq.xml
-    itself because the image's entrypoint edits that file on startup (it injects the
-    login plugin). The same login plugin is already included at the bottom of this file.
--->
+<!-- Default activemq.xml plus the retry rule below. Separate file because the image's
+     entrypoint rewrites activemq.xml on startup. -->
 <beans
   xmlns="http://www.springframework.org/schema/beans"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
   http://activemq.apache.org/schema/core http://activemq.apache.org/schema/core/activemq-core.xsd">
 
-    <!-- ${activemq.username} / ${activemq.password} come from here (set from ACTIVEMQ_CONNECTION_USER/PASSWORD) -->
     <bean class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
         <property name="locations">
             <value>file:${activemq.conf}/credentials.properties</value>
@@ -31,18 +23,7 @@
                   </pendingMessageLimitStrategy>
                 </policyEntry>
 
-                <!-- =============================================================
-                     Delayed retry for loan applications.
-                     Nothing consumes LoanApplicationsRetryQueue. MI puts a message
-                     there with a time-to-live (60s by default). When it expires,
-                     ActiveMQ "dead-letters" it - and for this queue the dead-letter
-                     destination is the MAIN queue, so the message goes back to
-                     LoanApplicationsQueue and MI processes it again.
-                       expireMessagesPeriod = how often the broker checks for expired
-                                              messages (5s, so the delay is ~60-65s)
-                       processExpired       = also dead-letter expired messages
-                       expiration="0"       = the moved copy never expires
-                     ============================================================= -->
+                <!-- delayed retry: expired messages on the retry queue go back to the main queue -->
                 <policyEntry queue="LoanApplicationsRetryQueue" expireMessagesPeriod="5000">
                   <deadLetterStrategy>
                     <sharedDeadLetterStrategy processExpired="true" expiration="0">
@@ -92,7 +73,6 @@
             <bean xmlns="http://www.springframework.org/schema/beans" class="org.apache.activemq.hooks.SpringContextHook"/>
         </shutdownHooks>
 
-        <!-- broker login (MI connects with these) -->
         <plugins>
             <simpleAuthenticationPlugin>
                 <users>
@@ -102,6 +82,6 @@
         </plugins>
     </broker>
 
-    <!-- web console (http://localhost:8161/admin) and its REST API (e.g. for posting test messages) -->
+    <!-- web console -->
     <import resource="jetty.xml"/>
 </beans>

@@ -1,10 +1,4 @@
-# Custom API-level ("advanced") rate-limiting policy, imported by the pipeline with
-#   apictl import policy rate-limiting -f <this file> -e <env> --update
-#
-# Why: CustomersAPI calls reqres.in (via CustomerProxy), and the free reqres.in plan
-# allows only 250 requests per DAY. An API-level policy counts ALL calls to the API
-# together (every application and user), so the gateway answers 429 before we use up
-# the backend quota. (A subscription tier would count each application separately.)
+# 250 requests/day for the whole API - the reqres.in free plan limit
 type: throttling policy
 subtype: advanced policy
 version: v4.7.0

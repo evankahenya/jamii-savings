@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <endpoint xmlns="http://ws.apache.org/ns/synapse" name="CustomerProxyEP">
-    <!-- uri.var.customerId is populated automatically from the API path parameter.
-         Timeout is longer than ReqresCustomerEP so backend timeouts surface as the proxy's 504 -->
+    <!-- longer timeout than ReqresCustomerEP so backend timeouts surface as the proxy's 504 -->
     <http method="get" uri-template="http://localhost:8290/services/CustomerProxy/{uri.var.customerId}">
         <timeout>
             <duration>15000</duration>

@@ -1,9 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Loans for Jamii Savings (one API, two resources):
-       POST /loans/eligibility   REST/JSON -> SOAP eligibility check -> JSON (Part 1c)
-       POST /loans/applications  validates a loan application and queues it on LoanApplicationsQueue (Bonus B);
-                                 LoanApplicationConsumer then calls /loans/eligibility asynchronously
-     Each resource also has a catch-all for other HTTP methods that answers 405. -->
 <api xmlns="http://ws.apache.org/ns/synapse" name="LoansAPI" context="/loans">
 
     <resource methods="POST" uri-template="/eligibility">
@@ -27,8 +22,7 @@
                 </else>
             </filter>
 
-            <!-- if the body is broken JSON the validate step below throws an error and we end up in the
-                 faultSequence. This flag tells the faultSequence it was a bad request and not a server error -->
+            <!-- tells the faultSequence that a validate error means bad input -->
             <property name="checkingRequest" value="true"/>
 
             <!-- Validate request using JSON schema (schemas/LoansEligibilityRequest.json) -->
@@ -244,9 +238,7 @@
         </inSequence>
     </resource>
 
-    <!-- Entry point for loan applications. Validates the request, wraps it in a LoanApplicationSubmitted
-         event and publishes it to LoanApplicationsQueue, then answers 202 straight away.
-         The eligibility check happens later in LoanApplicationConsumer (see "Bonus tasks" in README.md) -->
+    <!-- validates the application, queues it on LoanApplicationsQueue and answers 202 -->
     <resource methods="POST" uri-template="/applications">
         <inSequence>
             <property name="artifactName" scope="default" type="STRING" value="LoansAPI"/>
@@ -285,8 +277,7 @@
             </validate>
             <property name="checkingRequest" value="false"/>
 
-            <!-- the correlation ID becomes the eventId / applicationId, so one ID is used end to end.
-                 Sent as text so it shows up as a readable TextMessage in the ActiveMQ console -->
+            <!-- correlation ID is reused as the eventId; sent as text so it's readable in the ActiveMQ console -->
             <payloadFactory media-type="text">
                 <format>{"eventId":"${properties.synapse.correlationId}","eventType":"LoanApplicationSubmitted","submittedAt":"${properties.synapse.requestTimestamp}","customer":${payload.customer},"employment":${payload.employment},"loan":${payload.loan}}</format>
             </payloadFactory>

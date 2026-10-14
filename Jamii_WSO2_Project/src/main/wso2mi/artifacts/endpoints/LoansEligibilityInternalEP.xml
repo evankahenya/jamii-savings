@@ -1,10 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <endpoint xmlns="http://ws.apache.org/ns/synapse" name="LoansEligibilityInternalEP">
-    <!-- LoansAPI /eligibility (Part 1 API) called by LoanApplicationConsumer.
-         The URL comes from ${configs.loans_eligibility_url} (env var loans_eligibility_url, default
-         http://localhost:8290/loans/eligibility) and is put in uri.var.loansEligibilityUrl by the consumer.
-         Timeout is above the API's own 10s backend timeout so the API can answer with its 503/504 first.
-         No suspension: every failed call should go through the consumer's own retry queue logic -->
+    <!-- URL from configs.loans_eligibility_url; no suspension so every failure goes through the retry logic -->
     <http method="post" uri-template="{uri.var.loansEligibilityUrl}">
         <timeout>
             <duration>15000</duration>

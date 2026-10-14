@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <endpoint xmlns="http://ws.apache.org/ns/synapse" name="LoanApplicationsRetryQueueEP">
-    <!-- JMS queue LoanApplicationsRetryQueue: messages waiting ~60s before ActiveMQ moves them back to LoanApplicationsQueue (see infra/activemq/jamii-activemq.xml).
-         Uses the "myQueueSender" connection factory from deployment.toml (broker URL + login live there) -->
+    <!-- events waiting to be retried -->
     <address uri="jms:/LoanApplicationsRetryQueue?transport.jms.ConnectionFactory=myQueueSender&amp;transport.jms.DestinationType=queue"/>
 </endpoint>

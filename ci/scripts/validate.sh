@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Static checks - fast, need no servers. Fails if anything is inconsistent, so we
-# never start a deployment with a half-defined API.
+# Static checks on the repo before anything is built or deployed
 . "$(dirname "$0")/common.sh"
 
 errors=0
@@ -23,7 +22,6 @@ for api in $(api_names); do
   for env in dev uat prod; do
     grep -q "name: $env.\{0,1\}\$" "$dir/params.yaml" 2>/dev/null || problem "$api: params.yaml has no '$env' environment"
   done
-  # the APIM context must match the MI API context, otherwise the gateway calls the wrong backend
   mi_ctx=$(xmllint --xpath 'string(//*[local-name()="api"]/@context)' "$MI_APIS_DIR/$api.xml" 2>/dev/null || true)
   apim_ctx=$(yaml_value "$dir/api.yaml" context)
   if [ "$mi_ctx" = "$apim_ctx" ]; then ok "$api (context $apim_ctx)"
@@ -66,8 +64,7 @@ for prod in $(product_names); do
     [[ " $BUILTIN_API_TIERS " == *" $tier "* ]] || [ -f "$RATE_LIMIT_DIR/$tier.yaml" ] \
       || problem "product $prod uses tier '$tier', which is not built in and has no file in ${RATE_LIMIT_DIR#"$REPO_ROOT"/}/"
   done
-  # a product has its own copy of each resource with its OWN rate limit: if an API has an
-  # API-level tier (e.g. ReqRes), the product must use it too, or callers could bypass the limit
+  # product resources have their own rate limit, so they must match the API's tier
   while read -r api tier; do
     [ -n "$api" ] || continue
     want=$(yaml_value "$APIM_APIS_DIR/$api/api.yaml" apiThrottlingPolicy)

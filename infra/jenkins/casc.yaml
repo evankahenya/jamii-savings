@@ -1,7 +1,5 @@
-# Jenkins Configuration-as-Code. Applied on every Jenkins start.
-# ${VAR:-default} values come from infra/jenkins/compose.yaml (or your .env).
 jenkins:
-  systemMessage: "Jamii CI. This Jenkins is configured from code: infra/jenkins/casc.yaml"
+  systemMessage: "Jamii CI"
   numExecutors: 2
   securityRealm:
     local:
@@ -17,7 +15,7 @@ unclassified:
   location:
     url: "${JENKINS_URL:-http://localhost:8081/}"
 
-# Logins the pipeline uses for each environment (ids are referenced in ci/environments/<env>.properties)
+# ids are referenced from ci/environments/<env>.properties
 credentials:
   system:
     domainCredentials:
@@ -35,11 +33,10 @@ credentials:
               username: "${MI_DEV_USER:-admin}"
               password: "${MI_DEV_PASSWORD:-admin}"
 
-# The pipeline job: reads the Jenkinsfile from the repo
 jobs:
   - script: |
       pipelineJob('jamii-api-deploy') {
-        description('Builds the MI CAR + the 4 APIM APIs and deploys them dev -> uat -> prod. Defined in infra/jenkins/casc.yaml')
+        description('Builds and deploys the Jamii APIs to MI and API Manager')
         definition {
           cpsScm {
             scm {
@@ -53,4 +50,3 @@ jobs:
           }
         }
       }
-      // The first build is started automatically by init.groovy.d/jamii-first-build.groovy

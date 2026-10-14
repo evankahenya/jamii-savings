@@ -1,14 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <proxy xmlns="http://ws.apache.org/ns/synapse" name="LoanApplicationConsumer" startOnLoad="true" transports="jms">
-    <!-- Consumes LoanApplicationSubmitted events from the ActiveMQ queue LoanApplicationsQueue,
-         transforms each one into a LoansAPI /eligibility request, calls the API and publishes the result
-         to LoanDecisionsQueue.
-
-           broken JSON / fails schema    -> LoanApplicationsDLQ  (errorStage=validation)
-           API answers 4xx               -> LoanApplicationsDLQ  (errorStage=api-rejected)
-           API down / timeout / 5xx      -> LoanApplicationsRetryQueue, back here after ~60s,
-                                            LoanApplicationsDLQ after loan_max_retries tries (errorStage=retries-exhausted)
-           any other unexpected error    -> LoanApplicationsDLQ  (errorStage=processing-error) -->
+    <!-- reads LoanApplicationsQueue, checks eligibility and publishes to LoanDecisionsQueue. Bad events go to the DLQ, temporary failures to the retry queue -->
     <target>
         <inSequence>
             <property name="artifactName" scope="default" type="STRING" value="LoanApplicationConsumer"/>
@@ -21,8 +13,7 @@
                       expression="${exists(headers[&quot;retryCount&quot;]) ? headers[&quot;retryCount&quot;] : '0'}"/>
             <property name="processingStage" value="parsing"/>
 
-            <!-- The queue is read as plain text (see transport.jms.ContentType below), so a broken message
-                 can't fail before we've kept a copy. rawEvent is what gets sent on to the DLQ / retry queue -->
+            <!-- read as text so a broken message can still be forwarded -->
             <property name="rawEvent" scope="default" type="STRING" expression="string($body/*[1])"/>
             <log category="INFO">
                 <message>[LoanApplicationConsumer] Event received | correlationId=${properties.synapse.correlationId} | retryCount=${properties.synapse.retryCount}</message>
@@ -70,8 +61,7 @@
                 <message>[LoanApplicationConsumer] Event valid, calling LoansAPI /eligibility | correlationId=${properties.synapse.correlationId} | retryCount=${properties.synapse.retryCount}</message>
             </log>
 
-            <!-- 3. transform: short flat event -> full LoansAPI /eligibility request.
-                    Fields the event doesn't carry get safe defaults (KES, resident, unverified income, no other debts) -->
+            <!-- 3. transform the event into an eligibility request (missing fields get defaults) -->
             <property name="processingStage" value="transforming"/>
             <payloadFactory media-type="json">
                 <format>{

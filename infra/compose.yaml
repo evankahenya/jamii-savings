@@ -1,29 +1,9 @@
-# =====================================================================
-# Jamii Savings platform - ONE compose file for ALL environments.
-#
-# Works out of the box (run from this folder) - starts DEV:
-#   docker compose up -d
-#
-# Other environments override the dev defaults with an env file:
-#   docker compose --env-file env/uat.env  up -d     <- placeholder
-#   docker compose --env-file env/prod.env up -d     <- placeholder
-#
-# Every ${VAR:-value} below shows the DEV default. Each environment gets its
-# own project name (jamii-dev, jamii-uat, ...) so containers, networks and
-# volumes of different environments never mix.
-#
-# Optional secrets: copy .env.example to .env (git-ignored). Compose reads
-# .env automatically when no --env-file is given.
-# =====================================================================
+# Defaults are for dev. For uat/prod: docker compose --env-file env/uat.env up -d
 name: ${COMPOSE_PROJECT_NAME:-jamii-dev}
 
 services:
 
-  # -------------------------------------------------------------------
-  # SQLite is just a FILE, not a server. This one-shot job builds the
-  # Jamii_db file from schema.sql + seed.sql into a shared volume, then
-  # exits. MI reads that same volume.
-  # -------------------------------------------------------------------
+  # builds Jamii_db from schema.sql + seed.sql
   sqlite-init:
     image: ${SQLITE_IMAGE:-keinos/sqlite3:3.46.1}
     user: root
@@ -37,12 +17,7 @@ services:
       - ./sqlite/init-db.sh:/init-db.sh:ro
     restart: "no"
 
-  # -------------------------------------------------------------------
-  # One-shot job: builds Jamii_WSO2_Project into a .car (Maven runs in
-  # this container - nothing to install) and drops it into MI's
-  # carbonapps volume. Skipped if a .car is already deployed (e.g. by
-  # Jenkins). Force a rebuild:  FORCE_CAR_BUILD=true docker compose up -d
-  # -------------------------------------------------------------------
+  # builds the .car into MI's carbonapps volume (skipped if one is already there)
   car-build:
     image: ${MAVEN_IMAGE:-maven:3.9.9-eclipse-temurin-21}
     user: root
@@ -56,22 +31,13 @@ services:
       - ./mi/build-car.sh:/build-car.sh:ro
     restart: "no"
 
-  # -------------------------------------------------------------------
-  # ActiveMQ Classic 5.18 - JMS broker for MI
-  #   OpenWire (MI connects here): tcp://activemq:61616 (inside docker)
-  #   Web console:  http://localhost:8161/admin   (admin / admin)
-  # -------------------------------------------------------------------
   activemq:
     image: ${ACTIVEMQ_IMAGE:-apache/activemq-classic:5.18.7}
     hostname: activemq
     environment:
-      # broker login (MI's JMS transport uses the same values)
       ACTIVEMQ_CONNECTION_USER: ${AMQ_USER:-admin}
       ACTIVEMQ_CONNECTION_PASSWORD: ${AMQ_PASSWORD:-admin}
-      # the image's own ACTIVEMQ_OPTS keeps the console reachable; we add the heap size
       ACTIVEMQ_OPTS: "${AMQ_JAVA_MEMORY:--Xms64m -Xmx384m} -Djetty.host=0.0.0.0"
-    # start with our config (default config + the loan-application retry rule).
-    # See activemq/jamii-activemq.xml for why it isn't mounted over activemq.xml
     command: ["activemq", "console", "xbean:file:/opt/apache-activemq/conf/jamii-activemq.xml"]
     ports:
       - "${AMQ_PORT_OPENWIRE:-61616}:61616"
@@ -87,12 +53,6 @@ services:
       retries: 12
     restart: unless-stopped
 
-  # -------------------------------------------------------------------
-  # WSO2 Micro Integrator 4.6
-  #   APIs:            http://localhost:8290/accounts/...
-  #   Management API:  https://localhost:9164/management  (admin / admin)
-  #                    -> Jenkins deploys new .car files through this API
-  # -------------------------------------------------------------------
   mi:
     build:
       context: ./mi
@@ -105,10 +65,7 @@ services:
       JAVA_OPTS: ${MI_JAVA_OPTS:--Xms256m -Xmx768m}
       ACTIVEMQ_CONNECTION_USER: ${AMQ_USER:-admin}
       ACTIVEMQ_CONNECTION_PASSWORD: ${AMQ_PASSWORD:-admin}
-      # read by CustomerProxy as ${configs.reqres_api_key}. The default is the project's shared
-      # reqres.in public key, so it works out of the box; set REQRES_API_KEY in .env to use your own.
       reqres_api_key: ${REQRES_API_KEY:-pub_f02d3c4c984d392f88ffc537c5a37621}
-      # read by LoanApplicationConsumer (queue consumer) as ${configs.*}
       loans_eligibility_url: ${LOANS_ELIGIBILITY_URL:-http://localhost:8290/loans/eligibility}
       loan_max_retries: ${LOAN_MAX_RETRIES:-3}
       loan_retry_ttl_ms: ${LOAN_RETRY_TTL_MS:-60000}
@@ -137,16 +94,7 @@ services:
       retries: 10
     restart: unless-stopped
 
-  # -------------------------------------------------------------------
-  # WSO2 API Manager 4.7 (all-in-one: Publisher, Dev Portal, Gateway, Key Manager)
-  #   Publisher:   https://localhost:9443/publisher   (admin / admin)
-  #   Dev Portal:  https://localhost:9443/devportal
-  #   Gateway:     https://localhost:8243/...
-  # API backends point at MI by service name: http://mi:8290/...
-  # -------------------------------------------------------------------
-  # One-shot job: the APIM image has no solr/ folder (APIM creates it on first start), so a
-  # volume mounted there starts out owned by root and APIM can't write its search index.
-  # This hands the volume to APIM's user (10001) before APIM starts.
+  # the APIM image has no solr/ folder, so make the index volume writable for APIM's user
   apim-init:
     image: ${SQLITE_IMAGE:-keinos/sqlite3:3.46.1}
     user: root
@@ -168,14 +116,11 @@ services:
       - "${APIM_PORT_GW_HTTP:-8280}:8280"
       - "${APIM_PORT_GW_HTTPS:-8243}:8243"
     volumes:
-      # built-in H2 databases (APIs, apps, subscriptions) survive container re-creation
       - apim-db:/home/wso2carbon/wso2am-4.7.0/repository/database
-      # the search index must live next to the database: if the container is recreated and the
-      # index is lost, the Publisher / Dev Portal / apictl stop listing APIs that still exist
+      # keep the search index with the DB, or APIs disappear from the portals after a recreate
       - apim-solr:/home/wso2carbon/wso2am-4.7.0/solr
-      # Jamii error format + "what to do next" for auth failures (401/403), e.g. app not subscribed
       - ./apim/_auth_failure_handler_.xml:/home/wso2carbon/wso2am-4.7.0/repository/deployment/server/synapse-configs/default/sequences/_auth_failure_handler_.xml:ro
-    mem_limit: ${APIM_MEM_LIMIT:-3g}   # Java heap 1.5 GB + ~1.3 GB non-heap; 2.5 GB ran at 97%
+    mem_limit: ${APIM_MEM_LIMIT:-3g}
     healthcheck:
       test: ["CMD-SHELL", "curl -skf https://localhost:9443/services/Version || exit 1"]
       interval: 20s

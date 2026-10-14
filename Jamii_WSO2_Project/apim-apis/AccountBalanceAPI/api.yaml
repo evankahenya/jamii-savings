@@ -1,4 +1,3 @@
-# Exported from API Manager (dev) with ci/scripts/pull-api.sh - see that script for what is/isn't pulled.
 type: api
 version: v4.7.0
 data:

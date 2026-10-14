@@ -1,27 +1,13 @@
 #!/usr/bin/env bash
-# =====================================================================
-# Deploys the MI CAR + ALL APIM APIs to one environment - all or nothing.
+# Deploys the CAR, APIs and API products to one environment. On any failure,
+# everything already changed is rolled back.
 #
-#   1. Pre-flight   : artifacts exist, MI + APIM reachable and logins work
-#   2. Backup       : export the current version of every API from APIM
-#   3. Deploy MI    : replace the CApp, wait until MI reports it active
-#   4. Deploy APIM  : import/update every API (new revision, deployed to gateway)
-#   5. Smoke tests  : MI direct + through the gateway
-#
-# If ANY step after pre-flight fails, everything already changed is rolled back
-# (APIs restored from the backup or deleted if new, MI restored to the last good
-# CAR) and the script exits non-zero - no partial deployments.
-#
-# Required env: TARGET_ENV APIM_URL APIM_USER APIM_PASS MI_MGMT_URL MI_USER MI_PASS
-#               MI_URL GATEWAY_URL      (Jenkins sets these from ci/environments/*)
-# Optional:     STATE_DIR (where the last good CAR per env is kept)
-#               ENV_WAIT_SECONDS (how long to wait for MI/APIM to come up, default 1200)
-# =====================================================================
+# Required: TARGET_ENV APIM_URL APIM_USER APIM_PASS MI_MGMT_URL MI_USER MI_PASS MI_URL GATEWAY_URL
+# Optional: STATE_DIR, ENV_WAIT_SECONDS (default 1200)
 . "$(dirname "$0")/common.sh"
 require_vars TARGET_ENV APIM_URL APIM_USER APIM_PASS MI_MGMT_URL MI_USER MI_PASS MI_URL GATEWAY_URL
 
 STATE_DIR=${STATE_DIR:-${JENKINS_HOME:-$REPO_ROOT/.ci-state}/jamii-state}
-# last successfully deployed CAR, kept under its ORIGINAL file name (MI identifies a CApp by it)
 LAST_GOOD_DIR="$STATE_DIR/$TARGET_ENV/last-good"
 LAST_GOOD=$(ls "$LAST_GOOD_DIR"/*.car 2>/dev/null | head -1 || true)
 WORK="$DIST_DIR/deploy-$TARGET_ENV"
@@ -29,22 +15,21 @@ BACKUP="$WORK/backup"
 mapfile -t APIS < <(api_names)
 mapfile -t PRODUCTS < <(product_names)
 
-IMPORTED=()            # APIs we have touched in APIM (for rollback)
-NEW_APIS=()            # APIs that did not exist before this deploy
-IMPORTED_PRODUCTS=()   # API Products we have touched
-NEW_PRODUCTS=()        # API Products that did not exist before this deploy
+IMPORTED=()
+NEW_APIS=()
+IMPORTED_PRODUCTS=()
+NEW_PRODUCTS=()
 MI_TOUCHED=false
 
-is_in() { [[ " ${*:2} " == *" $1 "* ]]; }   # is_in <item> <list...>
+is_in() { [[ " ${*:2} " == *" $1 "* ]]; }
 
-# ---------------------------------------------------------------------
 rollback() {
   set +e
   local problems=0
   log "ROLLING BACK $TARGET_ENV"
-  # the smoke test's helper app subscribes to the APIs; subscriptions block deleting an API
+  # subscriptions from the smoke test app block deleting APIs
   apictl delete app -n default-apictl-app -e "$TARGET_ENV" -k >/dev/null 2>&1
-  # 1. NEW products go first: a product that uses an API blocks deleting that API
+  # new products first, otherwise they block deleting their APIs
   local prod
   for prod in "${IMPORTED_PRODUCTS[@]}"; do
     is_in "$prod" "${NEW_PRODUCTS[@]}" || continue
@@ -52,7 +37,6 @@ rollback() {
       ok "APIM: removed new API product $prod"
     else fail "APIM: could not remove API product $prod"; problems=$((problems + 1)); fi
   done
-  # 2. APIs
   for ((i = ${#IMPORTED[@]} - 1; i >= 0; i--)); do
     local api=${IMPORTED[$i]}
     if [[ " ${NEW_APIS[*]} " == *" $api "* ]]; then
@@ -60,15 +44,13 @@ rollback() {
         ok "APIM: removed new API $api"
       else fail "APIM: could not remove $api"; problems=$((problems + 1)); fi
     else
-      # --params re-applies this env's gateway deployment (an export doesn't carry it),
-      # so the restored version is what the gateway serves again
+      # --params redeploys to the gateway (the export doesn't include it)
       if apictl import api -f "$BACKUP/$api.zip" -e "$TARGET_ENV" --params "$DIST_DIR/apis/$api.params.yaml" \
            --update --rotate-revision -k >/dev/null 2>&1; then
         ok "APIM: restored previous $api"
       else fail "APIM: could not restore $api"; problems=$((problems + 1)); fi
     fi
   done
-  # 3. products that existed before: restore them now that their APIs are back
   for prod in "${IMPORTED_PRODUCTS[@]}"; do
     is_in "$prod" "${NEW_PRODUCTS[@]}" && continue
     if apictl import api-product -f "$BACKUP/products/$prod" -e "$TARGET_ENV" \
@@ -81,8 +63,6 @@ rollback() {
       if mi_deploy_car "$LAST_GOOD"; then ok "MI: restored last good CAR"
       else fail "MI: could not restore last good CAR"; problems=$((problems + 1)); fi
     else
-      # first ever deploy to this env: there is no previous version to go back to,
-      # so remove the new CApp rather than leave it running without its APIs
       local base; base=$(basename "$CAR" .car)
       if mi_undeploy_capp "${base%_*}" "$base"; then warn "MI: no previous CAR known - removed the new CApp"
       else fail "MI: could not remove the new CApp"; problems=$((problems + 1)); fi
@@ -97,14 +77,13 @@ rollback() {
 
 on_error() {
   local code=$? line=$1
-  [ "$BASH_SUBSHELL" -gt 0 ] && exit "$code"   # let the error reach the main shell first
+  [ "$BASH_SUBSHELL" -gt 0 ] && exit "$code"
   trap - ERR
   echo >&2; echo "Deployment to $TARGET_ENV FAILED (line $line, exit $code)." >&2
   rollback
   exit 1
 }
 
-# ---------------------------------------------------------------------
 log "Pre-flight checks for $TARGET_ENV"
 CARS=("$MI_PROJECT"/target/*.car)
 [ "${#CARS[@]}" -eq 1 ] && [ -f "${CARS[0]}" ] || { echo "Expected exactly one .car in $MI_PROJECT/target" >&2; exit 1; }
@@ -117,9 +96,7 @@ for prod in "${PRODUCTS[@]}"; do
   [ -f "$DIST_DIR/api-products/${prod}_1.0.0.zip" ] || { echo "Missing package for API product $prod - run package-apis.sh" >&2; exit 1; }
 done
 [ "${#PRODUCTS[@]}" -eq 0 ] || ok "API product packages: ${PRODUCTS[*]}"
-# The environment may still be starting (e.g. Jenkins and the platform were started
-# together): wait for it instead of failing. APIM needs ~3 min; on a first-ever start
-# MI waits for the CAR build (~10 min), hence the generous default.
+# wait in case the platform is still starting
 ENV_WAIT_SECONDS=${ENV_WAIT_SECONDS:-1200}
 wait_until "MI management API at $MI_MGMT_URL" "$ENV_WAIT_SECONDS" mi_login || exit 1
 ok "MI management API: $MI_MGMT_URL"
@@ -127,12 +104,10 @@ wait_until "API Manager at $APIM_URL" "$ENV_WAIT_SECONDS" apim_ready || exit 1
 ok "API Manager: $APIM_URL"
 rm -rf "${WORK:?}"; mkdir -p "$BACKUP" "$LAST_GOOD_DIR"
 
-# From here on, any failure rolls back what was already changed
 set -E
 trap 'on_error $LINENO' ERR
 
-# Custom tiers must exist before an API that uses them is imported. Importing them is
-# additive (create or update), and a tier no API uses is harmless, so a rollback leaves them.
+# tiers must exist before the APIs that use them; not rolled back
 log "Custom rate-limiting tiers"
 for f in "$DIST_DIR"/rate-limiting-policies/*.yaml; do
   [ -e "$f" ] || continue
@@ -142,8 +117,6 @@ done
 
 log "Backing up current APIs from APIM"
 for api in "${APIS[@]}"; do
-  # export doubles as the existence check: it reads the database directly, unlike the API
-  # list/search, which depends on APIM's search index and can lag or be incomplete
   exported="$HOME/.wso2apictl/exported/apis/$TARGET_ENV/${api}_1.0.0.zip"
   rm -f "$exported"
   if apictl export api -n "$api" -v 1.0.0 -e "$TARGET_ENV" -k >/dev/null 2>&1 && [ -f "$exported" ]; then
@@ -155,8 +128,7 @@ for api in "${APIS[@]}"; do
 done
 for prod in "${PRODUCTS[@]}"; do
   if apim_export_product "$prod" "$WORK/$prod-export.zip"; then
-    # keep a CLEANED copy to restore from: without the bundled API copies (the APIs are
-    # restored on their own) and without the instance IDs - the same shape as the repo's
+    # keep a cleaned copy (no bundled APIs, no instance IDs)
     d="$BACKUP/products/$prod"; mkdir -p "$d"
     unzip -q "$WORK/$prod-export.zip" -d "$WORK/$prod-export"
     src=$(find "$WORK/$prod-export" -mindepth 1 -maxdepth 1 -type d | head -1)
@@ -190,7 +162,7 @@ for api in "${APIS[@]}"; do
 done
 
 if [ "${#PRODUCTS[@]}" -gt 0 ]; then
-  log "Importing API Products (after the APIs they group)"
+  log "Importing API Products"
   for prod in "${PRODUCTS[@]}"; do
     IMPORTED_PRODUCTS+=("$prod")
     apictl import api-product -f "$DIST_DIR/api-products/${prod}_1.0.0.zip" -e "$TARGET_ENV" \

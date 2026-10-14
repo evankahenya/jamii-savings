@@ -1,18 +1,10 @@
-# Smoke tests run after every deployment - once directly against MI, once through
-# the APIM gateway (with a real access token). Any mismatch fails the deploy and
-# triggers a rollback.
-#
-# They only use the local DB and the APIs' own validation, so they don't depend
-# on external backends (reqres.in, beeceptor) being up.
-#
-# API | METHOD | path after the API context | expected HTTP status | request body (optional)
+# API | METHOD | path | expected status | body
 AccountBalanceAPI    | GET  | /0022012569822/balance | 200 |
 AccountBalanceAPI    | GET  | /123/balance           | 400 |
 CustomersAPI         | GET  | /not-a-uuid/dashboard  | 400 |
 CustomersAPI         | GET  | /not-a-uuid            | 400 |
 LoansAPI             | POST | /eligibility           | 400 | {}
 LoansAPI             | POST | /applications          | 400 | {}
-# API Product (gateway only - one call into each API it groups)
 JamiiProducts        | GET  | /0022012569822/balance | 200 |
 JamiiProducts        | GET  | /not-a-uuid            | 400 |
 JamiiProducts        | POST | /eligibility           | 400 | {}

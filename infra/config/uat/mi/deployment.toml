@@ -1,13 +1,7 @@
-# =====================================================================
-# MI 4.6 config for the UAT *container* (PLACEHOLDER - not run on this PC).
-# Based on Jamii_WSO2_Project/deployment/deployment.toml (used by VS Code),
-# with container-specific changes marked  >>> CONTAINER <<<
-# If you change masking/passthru settings in the project file, copy them here too.
-# =====================================================================
+# placeholder
 
 [server]
 hostname = "localhost"
-# >>> CONTAINER <<< pick up .car files dropped into carbonapps/ without a restart
 hot_deployment = true
 
 [user_store]
@@ -25,10 +19,7 @@ password = "wso2carbon"     # secret-detector:ignore
 alias = "symmetric.key.value"
 algorithm = "AES"
 
-# ---------------------------------------------------------------------
-# >>> CONTAINER <<< Jamii Savings DB lives in the shared Docker volume
-# created by the sqlite-init service (see compose.yaml)
-# ---------------------------------------------------------------------
+# DB file from the sqlite-init volume
 [[datasource]]
 id = "JamiiDB"
 url = "jdbc:sqlite:/home/wso2carbon/jamii-data/Jamii_db"
@@ -37,10 +28,7 @@ pool_options.maxActive = 10
 pool_options.testOnBorrow = true
 pool_options.validationQuery = "SELECT 1"
 
-# ---------------------------------------------------------------------
-# >>> CONTAINER <<< JMS transport -> ActiveMQ container ("activemq" is the
-# compose service name). Credentials come from env/<env>.secrets.env.
-# ---------------------------------------------------------------------
+# ActiveMQ container
 [transport.jms]
 sender_enable = true
 listener_enable = true
@@ -65,13 +53,13 @@ parameter.cache_level = "consumer"
 parameter.username = "$env{ACTIVEMQ_CONNECTION_USER}"
 parameter.password = "$env{ACTIVEMQ_CONNECTION_PASSWORD}"
 
-# Log masking (PII). Requires %mm instead of %m in conf/log4j2.properties layout patterns.
+# Log masking (needs %mm in log4j2.properties)
 [masking_pattern.properties]
 "ACCOUNT_NUMBER_PATH" = '(?<=/accounts/)[^/ ?"}]+?(?=[^/ ?"}]{4}(?:[/ ?"}]|$))'
 "CUSTOMER_ID_PATH" = '(?<=/customers/(?:records/)?)(?!records/)[^/ ?"}]+?(?=[^/ ?"}]{4}(?:[/ ?"}]|$))'
 "CUSTOMER_PROXY_PATH" = '(?<=/services/CustomerProxy/)[^/ ?"}]+?(?=[^/ ?"}]{4}(?:[/ ?"}]|$))'
 "ACCOUNT_NUMBER_FIELD" = '(?<=accountNumber[=": ]{1,4})[0-9]{9}(?=[0-9]{4}(?![0-9]))'
 
-# Never pass backend Server headers through to API clients (default true)
+# don't pass the backend Server header to clients
 [passthru_properties]
 'http.server.preserve' = false
