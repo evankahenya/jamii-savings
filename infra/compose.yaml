@@ -104,13 +104,17 @@ services:
     restart: "no"
 
   apim:
-    image: ${APIM_IMAGE:-wso2/wso2am:4.7.0}
+    image: ${APIM_IMAGE:-registry.wso2.com/wso2-apim/am:4.7.0-rocky}
     hostname: apim
     depends_on:
       apim-init:
         condition: service_completed_successfully
     environment:
       JAVA_OPTS: ${APIM_JAVA_OPTS:--Xms512m -Xmx1536m}
+    # APIM_ENCRYPTION_KEY for the $env{} placeholder in the APIM deployment.toml
+    env_file:
+      - path: ./env/${ENV_NAME:-dev}.secrets.env
+        required: false
     ports:
       - "${APIM_PORT_CONSOLE:-9443}:9443"
       - "${APIM_PORT_GW_HTTP:-8280}:8280"
@@ -120,6 +124,8 @@ services:
       # keep the search index with the DB, or APIs disappear from the portals after a recreate
       - apim-solr:/home/wso2carbon/wso2am-4.7.0/solr
       - ./apim/_auth_failure_handler_.xml:/home/wso2carbon/wso2am-4.7.0/repository/deployment/server/synapse-configs/default/sequences/_auth_failure_handler_.xml:ro
+      # files here mirror wso2am-4.7.0/ and are copied over it at startup by the image's entrypoint
+      - ./config/${ENV_NAME:-dev}/apim:/home/wso2carbon/wso2-config-volume:ro
     mem_limit: ${APIM_MEM_LIMIT:-3g}
     healthcheck:
       test: ["CMD-SHELL", "curl -skf https://localhost:9443/services/Version || exit 1"]
@@ -129,6 +135,96 @@ services:
       retries: 15
     restart: unless-stopped
 
+  # ---- Observability (profile "observability", on in dev via COMPOSE_PROFILES) ----
+  # Lean ELK: no Logstash; masking runs in the jamii-logs Elasticsearch ingest pipeline.
+  # Security is off, so ports are bound to localhost only - dev use only.
+
+  elasticsearch:
+    image: ${ELASTIC_IMAGE:-elasticsearch:9.5.5}
+    profiles: [observability]
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      # the traces-apm@custom masking script runs several regexes over long label values
+      script.painless.regex.enabled: "true"
+      ES_JAVA_OPTS: ${ES_JAVA_OPTS:--Xms512m -Xmx512m}
+    ports:
+      - "127.0.0.1:${ES_PORT:-9200}:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    mem_limit: ${ES_MEM_LIMIT:-1300m}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      start_period: 60s
+      retries: 20
+    restart: unless-stopped
+
+  kibana:
+    image: ${KIBANA_IMAGE:-kibana:9.5.5}
+    profiles: [observability]
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      NODE_OPTIONS: ${KIBANA_NODE_OPTIONS:---max-old-space-size=1024}
+    ports:
+      - "127.0.0.1:${KIBANA_PORT:-5601}:5601"
+    mem_limit: ${KIBANA_MEM_LIMIT:-1300m}
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5601/api/status | grep -q '\"level\":\"available\"' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      start_period: 90s
+      retries: 20
+    restart: unless-stopped
+
+  # receives OpenTelemetry traces (OTLP gRPC/HTTP on 8200) from APIM and MI
+  apm-server:
+    image: ${APM_SERVER_IMAGE:-elastic/apm-server:9.5.5}
+    profiles: [observability]
+    command: >
+      -e
+        -E apm-server.host=0.0.0.0:8200
+        -E output.elasticsearch.hosts=["http://elasticsearch:9200"]
+    mem_limit: ${APM_MEM_LIMIT:-256m}
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # loads the masking pipeline and Kibana data views, then exits
+  elk-init:
+    image: ${ELASTIC_IMAGE:-elasticsearch:9.5.5}
+    profiles: [observability]
+    entrypoint: ["/bin/sh", "/observability/elk-init.sh"]
+    volumes:
+      - ./observability:/observability:ro
+    depends_on:
+      kibana:
+        condition: service_healthy
+    restart: "no"
+
+  filebeat:
+    image: ${FILEBEAT_IMAGE:-elastic/filebeat:9.5.5}
+    profiles: [observability]
+    user: root
+    command: ["filebeat", "-e", "--strict.perms=false"]
+    environment:
+      JAMII_PROJECT: ${COMPOSE_PROJECT_NAME:-jamii-dev}
+    volumes:
+      - ./observability/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - filebeat-data:/usr/share/filebeat/data
+    mem_limit: ${FILEBEAT_MEM_LIMIT:-200m}
+    depends_on:
+      elk-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
 volumes:
   jamii-data:
   mi-carbonapps:
@@ -136,3 +232,5 @@ volumes:
   amq-data:
   apim-db:
   apim-solr:
+  es-data:
+  filebeat-data:

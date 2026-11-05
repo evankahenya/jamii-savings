@@ -11,6 +11,11 @@ jenkins:
     loggedInUsersCanDoAnything:
       allowAnonymousRead: false
 
+appearance:
+  pipelineGraphView:
+    showGraphOnJobPage: true
+    showGraphOnBuildPage: true
+
 unclassified:
   location:
     url: "${JENKINS_URL:-http://localhost:8081/}"

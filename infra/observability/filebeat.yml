@@ -1,0 +1,34 @@
+# Ships APIM, MI and ActiveMQ container logs to Elasticsearch.
+# Masking happens in the jamii-logs ingest pipeline, before anything is stored.
+filebeat.inputs:
+  - type: filestream
+    id: jamii-containers
+    paths:
+      - /var/lib/docker/containers/*/*.log
+    parsers:
+      - container: ~
+      # Java stack traces and wrapped lines belong to the log line before them
+      - multiline:
+          type: pattern
+          pattern: '^(\s|Caused by:|\.\.\. \d+ more)'
+          negate: false
+          match: after
+    prospector.scanner.symlinks: true
+
+processors:
+  - add_docker_metadata: ~
+  # only keep this project's runtime containers
+  - drop_event:
+      when:
+        not:
+          regexp:
+            container.name: '^${JAMII_PROJECT:jamii-dev}-(apim|mi|activemq)-'
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+  pipeline: jamii-logs
+
+setup.ilm.enabled: true
+setup.template.enabled: true
+setup.dashboards.enabled: false
+logging.level: warning

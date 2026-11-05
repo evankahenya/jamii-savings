@@ -2,6 +2,7 @@ configuration-as-code
 job-dsl
 workflow-aggregator
 pipeline-stage-view
+pipeline-graph-view
 pipeline-utility-steps
 git
 credentials-binding

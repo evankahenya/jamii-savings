@@ -1,0 +1,60 @@
+{
+  "description": "Jamii: mask client identifiers and credentials in APM trace labels/URLs. Runs as traces-apm@custom, before traces are stored.",
+  "processors": [
+    {
+      "script": {
+        "tag": "mask-trace-strings",
+        "lang": "painless",
+        "source": "String mask(String v) { if (v == null) { return null; } v = /(?i)((?:Authorization|x-api-key|apikey|api-key|Internal-Key|Cookie|Set-Cookie)=)[^,}]*/.matcher(v).replaceAll('$1***'); v = /(?<![0-9])[0-9]{9}([0-9]{4})(?![0-9])/.matcher(v).replaceAll('*********$1'); v = /(customers\\/(?:[0-9.]+\\/)?(?:records\\/)?)[^\\/?\\s,}]+/.matcher(v).replaceAll('$1***'); v = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/.matcher(v).replaceAll('***@***'); v = /(?<![0-9])(?:\\+?254|0)[17][0-9]{8}(?![0-9])/.matcher(v).replaceAll('***PHONE***'); return v; } if (ctx.labels instanceof Map) { for (def e : ctx.labels.entrySet()) { if (e.getValue() instanceof String) { e.setValue(mask(e.getValue())); } } } if (ctx.url instanceof Map) { for (def k : ['path', 'full', 'original', 'query']) { if (ctx.url[k] instanceof String) { ctx.url[k] = mask(ctx.url[k]); } } } if (ctx.transaction?.name instanceof String) { ctx.transaction.name = mask(ctx.transaction.name); } if (ctx.span?.name instanceof String) { ctx.span.name = mask(ctx.span.name); }"
+      }
+    },
+    {
+      "script": {
+        "tag": "db-catalog",
+        "description": "Database details for MI data service spans. MI only sometimes sets db_query_id/db_config_id, so fill them from this catalog (from Jamii_WSO2_Project data-services/*.dbs and the MI [[datasource]] config). Update it when a data service, query or datasource changes.",
+        "if": "ctx.labels instanceof Map && (ctx.labels.componentType == 'QueryExecution' || ctx.labels.componentType == 'DataService')",
+        "lang": "painless",
+        "params": {
+          "services": {
+            "AccountDataService": {
+              "config": "JamiiDB",
+              "queries": [
+                "GetAccountBalance"
+              ]
+            }
+          },
+          "configs": {
+            "JamiiDB": {
+              "db_name": "Jamii_db",
+              "db_type": "sqlite"
+            }
+          },
+          "queries": {
+            "GetAccountBalance": {
+              "table": "account",
+              "operation": "SELECT"
+            }
+          }
+        },
+        "source": "def l = ctx.labels; def svc = params.services[l.componentName]; if (l.db_query_id != null) { l.db_query_source = 'mi'; } else if (svc != null && svc.queries.size() == 1 && l.componentType == 'QueryExecution') { l.db_query_id = svc.queries[0]; l.db_query_source = 'catalog'; } if (l.db_config_id == null && svc != null) { l.db_config_id = svc.config; } def cfg = l.db_config_id == null ? null : params.configs[l.db_config_id]; if (cfg != null) { l.db_name = cfg.db_name; l.db_type = cfg.db_type; } def q = l.db_query_id == null ? null : params.queries[l.db_query_id]; if (q != null) { l.db_table = q.table; l.db_operation = q.operation; } if (svc == null) { l.db_catalog = 'missing: add ' + l.componentName + ' to the db-catalog processor'; }"
+      }
+    }
+  ],
+  "on_failure": [
+    {
+      "set": {
+        "field": "error.pipeline",
+        "value": "{{ _ingest.on_failure_message }}"
+      }
+    },
+    {
+      "remove": {
+        "field": [
+          "labels",
+          "url"
+        ],
+        "ignore_missing": true
+      }
+    }
+  ]
+}

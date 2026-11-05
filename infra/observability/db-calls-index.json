@@ -1,0 +1,80 @@
+{
+  "settings": {
+    "number_of_replicas": 0
+  },
+  "mappings": {
+    "properties": {
+      "@timestamp": {
+        "type": "date"
+      },
+      "trace": {
+        "properties": {
+          "id": {
+            "type": "keyword"
+          }
+        }
+      },
+      "db": {
+        "properties": {
+          "api": {
+            "type": "keyword"
+          },
+          "apis": {
+            "type": "keyword"
+          },
+          "gateway_api": {
+            "type": "keyword"
+          },
+          "data_service": {
+            "type": "keyword"
+          },
+          "query": {
+            "type": "keyword"
+          },
+          "queries": {
+            "type": "keyword"
+          },
+          "db_config": {
+            "type": "keyword"
+          },
+          "db_name": {
+            "type": "keyword"
+          },
+          "db_type": {
+            "type": "keyword"
+          },
+          "table": {
+            "type": "keyword"
+          },
+          "operation": {
+            "type": "keyword"
+          },
+          "query_count": {
+            "type": "integer"
+          },
+          "failed_count": {
+            "type": "integer"
+          },
+          "db_time_ms": {
+            "type": "double"
+          },
+          "max_query_ms": {
+            "type": "double"
+          },
+          "outcome": {
+            "type": "keyword"
+          },
+          "correlation_id": {
+            "type": "keyword"
+          },
+          "query_source": {
+            "type": "keyword"
+          }
+        }
+      }
+    },
+    "_meta": {
+      "description": "Jamii database calls per request; written by the jamii-db-calls transform (db-calls-transform.json)"
+    }
+  }
+}

@@ -62,3 +62,16 @@ parameter.password = "$env{ACTIVEMQ_CONNECTION_PASSWORD}"
 # don't pass the backend Server header to clients
 [passthru_properties]
 'http.server.preserve' = false
+
+# OpenTelemetry traces to the Elastic APM server (observability profile).
+# Flow statistics must be on for MI to create spans; capture_all traces every API/proxy/sequence.
+[mediation]
+flow.statistics.enable = true
+flow.statistics.capture_all = true
+
+[opentelemetry]
+enable = true
+type = "otlp"
+url = "http://apm-server:8200"
+# put the caller's X-Correlation-ID on each span so traces can be found from a log line
+custom.span.header.tags = "X-Correlation-ID"

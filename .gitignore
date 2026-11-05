@@ -1,3 +1,6 @@
 # CI build output (API packages, deploy backups)
 dist/
 .ci-state/
+
+# Local secrets (Moesif key, APIM encryption key)
+infra/env/*.secrets.env

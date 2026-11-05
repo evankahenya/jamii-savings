@@ -1,0 +1,77 @@
+{
+  "description": "Jamii: database calls per request, joined to the calling API through the trace",
+  "source": {
+    "index": [
+      "traces-apm*"
+    ],
+    "query": {
+      "bool": {
+        "should": [
+          {
+            "terms": {
+              "labels.componentType": [
+                "QueryExecution",
+                "API",
+                "Proxy Service"
+              ]
+            }
+          },
+          {
+            "bool": {
+              "filter": [
+                {
+                  "term": {
+                    "service.name": "jamii-apim"
+                  }
+                },
+                {
+                  "term": {
+                    "processor.event": "transaction"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "minimum_should_match": 1
+      }
+    }
+  },
+  "dest": {
+    "index": "jamii-db-calls"
+  },
+  "frequency": "1m",
+  "sync": {
+    "time": {
+      "field": "@timestamp",
+      "delay": "120s"
+    }
+  },
+  "settings": {
+    "max_page_search_size": 500
+  },
+  "pivot": {
+    "group_by": {
+      "trace.id": {
+        "terms": {
+          "field": "trace.id"
+        }
+      }
+    },
+    "aggregations": {
+      "@timestamp": {
+        "min": {
+          "field": "@timestamp"
+        }
+      },
+      "db": {
+        "scripted_metric": {
+          "init_script": "state.apis = new HashMap(); state.gw = null; state.q = new ArrayList(); state.cid = null;",
+          "map_script": "String ct = doc.containsKey('labels.componentType') && doc['labels.componentType'].size() > 0 ? doc['labels.componentType'].value : null; long ts = doc['@timestamp'].value.toInstant().toEpochMilli(); if (doc.containsKey('labels.span_api_name') && doc['labels.span_api_name'].size() > 0) { state.gw = doc['labels.span_api_name'].value; } if (('API'.equals(ct) || 'Proxy Service'.equals(ct)) && doc['labels.componentName'].size() > 0) { String n = doc['labels.componentName'].value; def prev = state.apis.get(n); if (prev == null || ts < prev) { state.apis.put(n, ts); } } if ('QueryExecution'.equals(ct)) { Map m = new HashMap(); m.ds = doc['labels.componentName'].size() > 0 ? doc['labels.componentName'].value : null; m.query = doc.containsKey('labels.db_query_id') && doc['labels.db_query_id'].size() > 0 ? doc['labels.db_query_id'].value : '(unknown)'; m.cfg = doc.containsKey('labels.db_config_id') && doc['labels.db_config_id'].size() > 0 ? doc['labels.db_config_id'].value : null; m.dbn = doc.containsKey('labels.db_name') && doc['labels.db_name'].size() > 0 ? doc['labels.db_name'].value : null; m.dbt = doc.containsKey('labels.db_type') && doc['labels.db_type'].size() > 0 ? doc['labels.db_type'].value : null; m.tbl = doc.containsKey('labels.db_table') && doc['labels.db_table'].size() > 0 ? doc['labels.db_table'].value : null; m.op = doc.containsKey('labels.db_operation') && doc['labels.db_operation'].size() > 0 ? doc['labels.db_operation'].value : null; m.src = doc.containsKey('labels.db_query_source') && doc['labels.db_query_source'].size() > 0 ? doc['labels.db_query_source'].value : null; m.us = doc['span.duration.us'].size() > 0 ? doc['span.duration.us'].value : 0L; m.ok = !(doc['event.outcome'].size() > 0 && 'failure'.equals(doc['event.outcome'].value)); m.ts = ts; state.q.add(m); if (state.cid == null && doc.containsKey('labels.X-Correlation-ID') && doc['labels.X-Correlation-ID'].size() > 0) { state.cid = doc['labels.X-Correlation-ID'].value; } }",
+          "combine_script": "return state;",
+          "reduce_script": "Map apis = new HashMap(); String gw = null; List q = new ArrayList(); String cid = null; for (s in states) { if (s == null) { continue; } for (e in s.apis.entrySet()) { def p = apis.get(e.getKey()); if (p == null || e.getValue() < p) { apis.put(e.getKey(), e.getValue()); } } if (gw == null) { gw = s.gw; } q.addAll(s.q); if (cid == null) { cid = s.cid; } } Map r = new HashMap(); r.query_count = q.size(); if (q.isEmpty()) { return r; } q.sort((a, b) -> Long.compare((long) a.ts, (long) b.ts)); List names = new ArrayList(apis.keySet()); names.sort((a, b) -> Long.compare((long) apis.get(a), (long) apis.get(b))); r.apis = names; r.api = names.isEmpty() ? '(direct call to data service)' : names.get(0); r.gateway_api = gw == null ? '(not via gateway)' : gw; def first = q.get(0); r.data_service = first.ds; r.db_config = first.cfg; r.db_name = first.dbn; r.db_type = first.dbt; r.table = first.tbl; r.operation = first.op; r.query_source = first.src; Set qs = new LinkedHashSet(); double tot = 0; double mx = 0; int failed = 0; for (m in q) { qs.add(m.query); tot += m.us; if (m.us > mx) { mx = m.us; } if (!m.ok) { failed++; } } r.queries = new ArrayList(qs); r.query = qs.size() == 1 ? first.query : 'multiple (' + qs.size() + ')'; r.db_time_ms = tot / 1000.0; r.max_query_ms = mx / 1000.0; r.failed_count = failed; r.outcome = failed > 0 ? 'failure' : 'success'; r.correlation_id = cid; return r;"
+        }
+      }
+    }
+  }
+}

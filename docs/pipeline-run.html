@@ -1,0 +1,678 @@
+<title>Jamii Deploy Run</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a run sheet — overview track on top, then one numbered row per action, grouped by the stage it appears under in Jenkins */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --ink: #17202c;
+  --muted: #5a6677;
+  --line: #d8dee7;
+  --accent: #2f5bd3;
+  --c-human: #b4386b;
+  --c-core: #2f5bd3;
+  --c-plugin: #7646c0;
+  --c-script: #0d7a6c;
+  --c-tool: #9a5c07;
+  --c-target: #b8502a;
+  --ok: #1c8448;
+  --fail: #c03434;
+  --code-bg: #eef1f6;
+  --f-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10151d; --surface: #171f2a; --ink: #e5eaf2; --muted: #9aa6b7; --line: #2a3442;
+    --accent: #85a3ff; --c-human: #f07fab; --c-core: #85a3ff; --c-plugin: #b796f2; --c-script: #4cc4b0;
+    --c-tool: #e3a84d; --c-target: #f08d63; --ok: #5ccf8a; --fail: #f27474; --code-bg: #1d2633;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10151d; --surface: #171f2a; --ink: #e5eaf2; --muted: #9aa6b7; --line: #2a3442;
+  --accent: #85a3ff; --c-human: #f07fab; --c-core: #85a3ff; --c-plugin: #b796f2; --c-script: #4cc4b0;
+  --c-tool: #e3a84d; --c-target: #f08d63; --ok: #5ccf8a; --fail: #f27474; --code-bg: #1d2633;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--f-body); font-size: 15px; line-height: 1.55;
+}
+.wrap {
+  max-width: 1080px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 72px;
+}
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; letter-spacing: 0.005em; }
+h1 { font-size: clamp(30px, 5vw, 44px); font-weight: 700; line-height: 1.05; }
+h2 { font-size: 24px; font-weight: 600; }
+h3 { font-size: 17px; font-weight: 600; }
+p { margin: 0; }
+code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+.eyebrow {
+  font-family: var(--f-mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+}
+header.top { display: grid; gap: 14px; margin-bottom: 32px; }
+header.top .lede { max-width: 68ch; color: var(--muted); font-size: 16px; }
+
+/* Legend */
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 6px; }
+.legend div { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+
+.chip {
+  --c: var(--muted);
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--f-mono); font-size: 12px; line-height: 1; white-space: nowrap;
+  padding: 5px 8px 5px 7px; border-radius: 4px;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 11%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
+}
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 2px; background: var(--c); flex: none; }
+.chip.human { --c: var(--c-human); }
+.chip.core { --c: var(--c-core); }
+.chip.plugin { --c: var(--c-plugin); }
+.chip.script { --c: var(--c-script); }
+.chip.tool { --c: var(--c-tool); }
+.chip.target { --c: var(--c-target); }
+
+/* Overview track */
+.overview {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  padding: 20px; margin-bottom: 40px; display: grid; gap: 16px;
+}
+.track { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; }
+.node {
+  display: grid; gap: 2px; align-content: start;
+  padding: 9px 11px; border-radius: 6px; min-width: 0;
+  border: 1px solid var(--line); background: var(--bg);
+  text-decoration: none; color: var(--ink);
+}
+.node:hover { border-color: var(--accent); }
+.node b { font-family: var(--f-display); font-weight: 600; font-size: 15px; }
+.node small { font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
+.node.hidden-stage { border-style: dashed; }
+.node.gate { border-color: color-mix(in srgb, var(--c-human) 45%, var(--line)); }
+.node.deploy { border-color: color-mix(in srgb, var(--c-target) 45%, var(--line)); }
+.arrow { align-self: center; color: var(--muted); font-family: var(--f-mono); font-size: 13px; }
+.track-note { font-size: 13px; color: var(--muted); max-width: 80ch; }
+.branch {
+  display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
+  font-size: 13px; padding-top: 14px; border-top: 1px dashed var(--line);
+}
+.pill { font-family: var(--f-mono); font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid; }
+.pill.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+.pill.fail { color: var(--fail); border-color: color-mix(in srgb, var(--fail) 40%, transparent); }
+
+/* Phases */
+.phase { display: grid; gap: 14px; margin-top: 44px; scroll-margin-top: 16px; }
+.phase-head { display: grid; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.phase-head .row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.phase-head .in-ui { font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+.phase-head p { color: var(--muted); max-width: 72ch; }
+
+ol.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.step {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 14px;
+  padding: 14px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+}
+.step:last-child { border-bottom: 0; }
+.step .n {
+  font-family: var(--f-mono); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums;
+  padding-top: 2px; text-align: right;
+}
+.step .body { display: grid; gap: 8px; min-width: 0; }
+.step .what { font-weight: 500; }
+.step .detail { color: var(--muted); font-size: 14px; max-width: 78ch; }
+.step .who { display: flex; flex-wrap: wrap; gap: 6px; }
+pre.cmd {
+  margin: 0; padding: 10px 12px; border-radius: 6px; background: var(--code-bg);
+  font-family: var(--f-mono); font-size: 12.5px; line-height: 1.5; overflow-x: auto; white-space: pre;
+  color: var(--ink);
+}
+pre.cmd .c { color: var(--muted); }
+.step.fail .n { color: var(--fail); }
+.step.fail .what { color: var(--fail); }
+.step.gate .n { color: var(--c-human); }
+
+.sub {
+  margin: 4px 0 0; padding: 12px 14px; border-left: 3px solid var(--line); background: var(--surface);
+  border-radius: 0 6px 6px 0; display: grid; gap: 6px; font-size: 14px;
+}
+.sub ul { margin: 0; padding-left: 18px; display: grid; gap: 3px; }
+.sub.fail { border-left-color: var(--fail); }
+.sub .label { font-family: var(--f-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+
+.callout {
+  padding: 12px 14px; border-radius: 6px; font-size: 14px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line));
+  max-width: 82ch;
+}
+
+/* Reference tables */
+.tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 20px; margin-top: 20px; }
+.tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--f-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 500; }
+tr:last-child td { border-bottom: 0; }
+td code { white-space: nowrap; }
+
+footer { margin-top: 48px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 16px; }
+
+@media (max-width: 560px) {
+  .step { grid-template-columns: 30px minmax(0, 1fr); gap: 10px; }
+  .overview { padding: 14px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+html { scroll-behavior: smooth; }
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <span class="eyebrow">jamii-api-deploy · one build, start to finish</span>
+  <h1>What happens after you click Build with Parameters</h1>
+  <p class="lede">Every action Jenkins takes during one run of the <code>jamii-api-deploy</code> job, in order. Each row shows who does it: you, Jenkins itself, a plugin, a repo script, a command-line tool, or the system being deployed to.</p>
+  <div class="legend" aria-label="Legend">
+    <div><span class="chip human">you</span> a person clicks</div>
+    <div><span class="chip core">jenkins core</span> built into Jenkins</div>
+    <div><span class="chip plugin">plugin</span> from plugins.txt</div>
+    <div><span class="chip script">script</span> file in the repo</div>
+    <div><span class="chip tool">tool</span> installed in the image</div>
+    <div><span class="chip target">target</span> MI or API Manager</div>
+  </div>
+</header>
+
+<section class="overview" aria-label="Overview">
+  <span class="eyebrow">The run at a glance — click a box to jump to it</span>
+  <div class="track">
+    <a class="node gate" href="#click"><b>Click</b><small>form · queue</small></a><span class="arrow">→</span>
+    <a class="node hidden-stage" href="#load"><b>Load job</b><small>config.xml</small></a><span class="arrow">→</span>
+    <a class="node hidden-stage" href="#script"><b>Read Jenkinsfile</b><small>@script checkout</small></a><span class="arrow">→</span>
+    <a class="node hidden-stage" href="#checkout"><b>Checkout SCM</b><small>workspace</small></a><span class="arrow">→</span>
+    <a class="node" href="#validate"><b>Validate</b><small>validate.sh</small></a><span class="arrow">→</span>
+    <a class="node" href="#build"><b>Build MI CAR</b><small>mvn install</small></a><span class="arrow">→</span>
+    <a class="node" href="#test"><b>Test</b><small>mvn test</small></a><span class="arrow">→</span>
+    <a class="node" href="#package"><b>Package APIM APIs</b><small>package-apis.sh</small></a><span class="arrow">→</span>
+    <a class="node deploy" href="#deploy-dev"><b>Deploy: dev</b><small>deploy.sh · smoke-test.sh</small></a><span class="arrow">→</span>
+    <a class="node gate" href="#uat-prod"><b>Approve + Deploy uat</b><small>if DEPLOY_UP_TO ≥ uat</small></a><span class="arrow">→</span>
+    <a class="node gate" href="#uat-prod"><b>Approve + Deploy prod</b><small>if DEPLOY_UP_TO = prod</small></a><span class="arrow">→</span>
+    <a class="node hidden-stage" href="#finish"><b>Post</b><small>message · save</small></a>
+  </div>
+  <p class="track-note">Dashed boxes happen without appearing as stages you wrote. Checkout SCM does show up as the first column in Stage View, labelled “Declarative: Checkout SCM”. Any failure stops the run at that point and skips every later stage.</p>
+  <div class="branch">
+    <span class="eyebrow">Inside each deploy</span>
+    <span>back up → deploy CAR → import APIs → import products → smoke test</span>
+    <span class="pill ok">pass → save last-good CAR</span>
+    <span class="pill fail">fail → roll everything back</span>
+  </div>
+</section>
+
+<!-- 1 -->
+<section class="phase" id="click">
+  <div class="phase-head">
+    <div class="row"><h2>1. You start the build</h2><span class="in-ui">Jenkins UI · job page</span></div>
+  </div>
+  <ol class="steps">
+    <li class="step gate"><div class="n">1</div><div class="body">
+      <p class="what">You click <b>Build with Parameters</b> and Jenkins shows a form with one field, <code>DEPLOY_UP_TO</code>.</p>
+      <p class="detail">The choices <code>dev</code>, <code>uat</code> and <code>prod</code> come from the <code>parameters { choice(...) }</code> block in the Jenkinsfile, which the previous build saved into the job's settings.</p>
+      <div class="who"><span class="chip human">you</span><span class="chip core">jenkins core</span><span class="chip script">Jenkinsfile:14</span></div>
+    </div></li>
+    <li class="step gate"><div class="n">2</div><div class="body">
+      <p class="what">You pick how far to go (default <code>dev</code>) and click <b>Build</b>.</p>
+      <div class="who"><span class="chip human">you</span></div>
+    </div></li>
+    <li class="step"><div class="n">3</div><div class="body">
+      <p class="what">Jenkins puts the build in the queue and gives it the next number (<code>#8</code>, <code>#9</code> …) from <code>nextBuildNumber</code>.</p>
+      <p class="detail">If another build of this job is still running, the new one waits, because the Jenkinsfile sets <code>disableConcurrentBuilds()</code>. Jenkins has 2 executors (<code>numExecutors: 2</code> in casc.yaml), so the build starts as soon as one is free.</p>
+      <div class="who"><span class="chip core">jenkins core</span><span class="chip script">casc.yaml:3</span></div>
+    </div></li>
+  </ol>
+</section>
+
+<!-- 2 -->
+<section class="phase" id="load">
+  <div class="phase-head">
+    <div class="row"><h2>2. Jenkins loads the job</h2><span class="in-ui">not shown as a stage</span></div>
+  </div>
+  <ol class="steps">
+    <li class="step"><div class="n">4</div><div class="body">
+      <p class="what">Jenkins looks up the job's settings to find out where the pipeline is.</p>
+      <p class="detail">The pipeline steps live in the Jenkinsfile, so Jenkins first needs to know which repo, branch and file to get. The job says: this is a Pipeline, the script comes from Git at <code>file:///repo</code>, branch <code>*/main</code>, file <code>Jenkinsfile</code>. It also holds the parameters for the form in step 1 and the (empty) list of triggers.</p>
+      <p class="detail">Jenkins loaded the job into memory when it started, from its saved copy at <code>/var/jenkins_home/jobs/jamii-api-deploy/config.xml</code>, and every build uses that copy. Nothing is fetched from Git yet. The Job DSL plugin wrote that file at startup, from the <code>jobs:</code> block in casc.yaml.</p>
+      <p class="detail">casc.yaml is never fetched from Git. The Dockerfile copies it from <code>infra/jenkins/</code> on your disk into the image at build time, and Jenkins reads that copy only when it starts. Uncommitted edits to it take effect after a rebuild. The Jenkinsfile and <code>ci/</code> scripts are the opposite: only committed code is used, fetched from Git on every build (step 5).</p>
+      <div class="who"><span class="chip core">jenkins core</span><span class="chip plugin">job-dsl (at startup)</span><span class="chip plugin">configuration-as-code (at startup)</span></div>
+    </div></li>
+  </ol>
+</section>
+
+<!-- 3 -->
+<section class="phase" id="script">
+  <div class="phase-head">
+    <div class="row"><h2>3. Jenkins fetches and reads the Jenkinsfile</h2><span class="in-ui">console: “Obtained Jenkinsfile from git file:///repo”</span></div>
+  </div>
+  <ol class="steps">
+    <li class="step"><div class="n">5</div><div class="body">
+      <p class="what">The Git plugin checks out the whole repo into a side folder, <code>jamii-api-deploy@script</code>, so Jenkins can read the pipeline file.</p>
+      <p class="detail">It's a full checkout because the job has <code>lightweight(false)</code>. Git reads only committed history in <code>/repo/.git</code>, so uncommitted edits are invisible. <code>/repo</code> is your project folder, mounted read-only by compose.yaml. The Dockerfile's <code>safe.directory '*'</code> stops Git refusing it because of the different owner.</p>
+      <pre class="cmd">git fetch --tags --force -- file:///repo +refs/heads/*:refs/remotes/origin/*
+git rev-parse refs/remotes/origin/main^{commit}
+git checkout -f &lt;commit&gt;</pre>
+      <div class="who"><span class="chip plugin">git</span><span class="chip tool">git</span><span class="chip script">compose.yaml</span><span class="chip script">Dockerfile</span></div>
+    </div></li>
+    <li class="step"><div class="n">6</div><div class="body">
+      <p class="what">Jenkins parses the Jenkinsfile as a declarative pipeline.</p>
+      <p class="detail">The Pipeline plugins (installed together as <code>workflow-aggregator</code>) turn the <code>pipeline { }</code> block into stages and steps that can pause and resume, which approval gates need.</p>
+      <div class="who"><span class="chip plugin">workflow-aggregator</span><span class="chip script">Jenkinsfile</span></div>
+    </div></li>
+    <li class="step"><div class="n">7</div><div class="body">
+      <p class="what">Jenkins applies the pipeline's <code>options</code> and <code>parameters</code>.</p>
+      <ul class="detail" style="margin:0;padding-left:18px">
+        <li><code>timestamps()</code>: every log line gets a time</li>
+        <li><code>timeout(60 MINUTES)</code>: abort the whole run after an hour, including time spent waiting at an approval</li>
+        <li><code>buildDiscarder(numToKeepStr: '20')</code>: delete builds older than the last 20</li>
+        <li><code>disableConcurrentBuilds()</code>: one build at a time</li>
+        <li><code>parameters</code>: saves the <code>DEPLOY_UP_TO</code> choice back into the job's settings</li>
+      </ul>
+      <div class="who"><span class="chip plugin">timestamper</span><span class="chip plugin">workflow-aggregator</span><span class="chip core">jenkins core</span><span class="chip script">Jenkinsfile:7–17</span></div>
+    </div></li>
+    <li class="step"><div class="n">8</div><div class="body">
+      <p class="what">Jenkins sets <code>MI_PROJECT=Jamii_WSO2_Project</code> for all stages.</p>
+      <div class="who"><span class="chip script">Jenkinsfile:19</span></div>
+    </div></li>
+  </ol>
+</section>
+
+<!-- 4 -->
+<section class="phase" id="checkout">
+  <div class="phase-head">
+    <div class="row"><h2>4. Declarative: Checkout SCM</h2><span class="in-ui">first column in Stage View</span></div>
+    <p>Jenkins adds this stage itself to every declarative pipeline. It isn't written in the Jenkinsfile.</p>
+  </div>
+  <ol class="steps">
+    <li class="step"><div class="n">9</div><div class="body">
+      <p class="what">The Git plugin checks out the same commit into the build workspace, <code>/var/jenkins_home/workspace/jamii-api-deploy</code>.</p>
+      <p class="detail">Every later <code>sh</code> and <code>mvn</code> command runs from this folder.</p>
+      <div class="who"><span class="chip plugin">git</span><span class="chip tool">git</span></div>
+    </div></li>
+    <li class="step"><div class="n">10</div><div class="body">
+      <p class="what">Jenkins records which commit was built, and the commits since the last build.</p>
+      <p class="detail">This fills the build's <b>Changes</b> page and the “Checking out Revision …” line in the console.</p>
+      <div class="who"><span class="chip plugin">git</span><span class="chip core">jenkins core</span></div>
+    </div></li>
+  </ol>
+</section>
+
+<!-- 5 -->
+<section class="phase" id="validate">
+  <div class="phase-head">
+    <div class="row"><h2>5. Validate</h2><span class="in-ui">stage “Validate” · <code>sh 'bash ci/scripts/validate.sh'</code></span></div>
+    <p>Static checks on the repo. Nothing is built or sent anywhere. Every problem is listed and counted, then the stage fails if there were any.</p>
+  </div>
+  <ol class="steps">
+    <li class="step"><div class="n">11</div><div class="body">
+      <p class="what">Load the shared helpers: folder paths, log helpers, and <code>set -euo pipefail</code> so any failed command stops the script.</p>
+      <div class="who"><span class="chip script">ci/scripts/common.sh</span><span class="chip tool">bash</span></div>
+    </div></li>
+    <li class="step"><div class="n">12</div><div class="body">
+      <p class="what">Check that every MI file is well-formed XML.</p>
+      <p class="detail">All <code>.xml</code>, <code>.dbs</code> and <code>.xsd</code> files under <code>Jamii_WSO2_Project/src/main/wso2mi</code>.</p>
+      <div class="who"><span class="chip script">validate.sh</span><span class="chip tool">xmllint</span></div>
+    </div></li>
+    <li class="step"><div class="n">13</div><div class="body">
+      <p class="what">For every API folder in <code>apim-apis/</code>, check that it's complete and matches MI.</p>
+      <ul class="detail" style="margin:0;padding-left:18px">
+        <li>An MI API file exists: <code>src/main/wso2mi/artifacts/apis/&lt;API&gt;.xml</code></li>
+        <li>An OpenAPI file exists: <code>resources/api-definitions/&lt;API&gt;.yaml</code></li>
+        <li><code>api.yaml</code>, <code>api_meta.yaml</code>, <code>deployment_environments.yaml</code> and <code>params.yaml</code> exist</li>
+        <li><code>params.yaml</code> has <code>dev</code>, <code>uat</code> and <code>prod</code> sections</li>
+        <li>The context (URL path) in API Manager equals the context in MI</li>
+      </ul>
+      <div class="who"><span class="chip script">validate.sh</span><span class="chip tool">xmllint</span></div>
+    </div></li>
+    <li class="step"><div class="n">14</div><div class="body">
+      <p class="what">Check that every policy an API uses exists in <code>apim-policies/</code>, both the <code>.yaml</code> and the <code>.j2</code>.</p>
+      <div class="who"><span class="chip script">validate.sh</span></div>
+    </div></li>
+    <li class="step"><div class="n">15</div><div class="body">
+      <p class="what">Check rate-limiting tiers.</p>
+      <p class="detail">Each tier file's <code>policyName</code> matches its file name. Each API's tier is built in (<code>Unlimited</code>, <code>10KPerMin</code>, <code>20KPerMin</code>, <code>50KPerMin</code>) or has a file in <code>apim-throttling-policies/</code>.</p>
+      <div class="who"><span class="chip script">validate.sh</span></div>
+    </div></li>
+    <li class="step"><div class="n">16</div><div class="body">
+      <p class="what">Check the API product (<code>JamiiProducts</code>).</p>
+      <p class="detail">Its files exist, it has no instance-specific <code>apiId</code>/<code>policyId</code> lines, it only uses APIs and tiers that exist, and each resource uses the same rate limit as the API behind it, so the product can't bypass a limit.</p>
+      <div class="who"><span class="chip script">validate.sh</span></div>
+    </div></li>
+  </ol>
+</section>
+
+<!-- 6 -->
+<section class="phase" id="build">
+  <div class="phase-head">
+    <div class="row"><h2>6. Build MI CAR</h2><span class="in-ui">stage “Build MI CAR”</span></div>
+  </div>
+  <ol class="steps">
+    <li class="step"><div class="n">17</div><div class="body">
+      <p class="what">Maven builds the MI project into a Carbon Application (CAR) file, skipping tests.</p>
+      <p class="detail">Maven reads <code>Jamii_WSO2_Project/pom.xml</code>. Plugins and dependencies it doesn't have yet are downloaded from the WSO2 Nexus repositories listed in the POM and cached in <code>~/.m2</code>. The output is <code>Jamii_WSO2_Project/target/Jamii_WSO2_Project_1.0.0.car</code>.</p>
+      <pre class="cmd"><span class="c"># Jenkinsfile:32 — dir(env.MI_PROJECT) { … }</span>
+mvn -B clean install -Dmaven.test.skip=true</pre>
+      <div class="who"><span class="chip core">dir step</span><span class="chip tool">maven</span><span class="chip script">pom.xml</span><span class="chip target">maven.wso2.org</span></div>
+    </div></li>
+  </ol>
+</section>
+
+<!-- 7 -->
+<section class="phase" id="test">
+  <div class="phase-head">
+    <div class="row"><h2>7. Test</h2><span class="in-ui">stage “Test”</span></div>
+  </div>
+  <ol class="steps">
+    <li class="step"><div class="n">18</div><div class="body">
+      <p class="what">Maven runs the MI (Synapse) unit tests.</p>
+      <p class="detail">The real calls against running systems happen later, in each deploy's smoke tests.</p>
+      <pre class="cmd">mvn -B test</pre>
+      <div class="who"><span class="chip tool">maven</span><span class="chip script">pom.xml</span></div>
+    </div></li>
+  </ol>
+</section>
+
+<!-- 8 -->
+<section class="phase" id="package">
+  <div class="phase-head">
+    <div class="row"><h2>8. Package APIM APIs</h2><span class="in-ui">stage “Package APIM APIs” · <code>sh 'bash ci/scripts/package-apis.sh'</code></span></div>
+    <p>Builds every package API Manager will need. This runs offline: apictl doesn't connect to anything here.</p>
+  </div>
+  <ol class="steps">
+    <li class="step"><div class="n">19</div><div class="body">
+      <p class="what">For each API (<code>AccountBalanceAPI</code>, <code>CustomersAPI</code>, <code>LoansAPI</code>), build an apictl project folder in <code>dist/stage/&lt;API&gt;</code>.</p>
+      <ul class="detail" style="margin:0;padding-left:18px">
+        <li>Copy <code>api.yaml</code>, <code>api_meta.yaml</code> and <code>deployment_environments.yaml</code>, removing Windows line endings</li>
+        <li>Copy the shared OpenAPI file to <code>Definitions/swagger.yaml</code></li>
+        <li>For each <code>policyName</code> in <code>api.yaml</code>, wrap its spec as <code>Policies/&lt;name&gt;_&lt;version&gt;.yaml</code> and copy the <code>.j2</code> template</li>
+      </ul>
+      <div class="who"><span class="chip script">package-apis.sh</span><span class="chip tool">sed · awk</span></div>
+    </div></li>
+    <li class="step"><div class="n">20</div><div class="body">
+      <p class="what">Zip each project with apictl and put its <code>params.yaml</code> beside the zip.</p>
+      <p class="detail"><code>params.yaml</code> holds the backend URL for each environment, so one zip can go to dev, uat and prod unchanged.</p>
+      <pre class="cmd">apictl bundle -s dist/stage/LoansAPI -d dist/apis   <span class="c"># → LoansAPI_1.0.0.zip</span>
+<span class="c"># + dist/apis/LoansAPI.params.yaml</span></pre>
+      <div class="who"><span class="chip tool">apictl 4.7.2</span><span class="chip script">package-apis.sh</span></div>
+    </div></li>
+    <li class="step"><div class="n">21</div><div class="body">
+      <p class="what">Copy the custom rate-limiting tiers to <code>dist/rate-limiting-policies/</code>.</p>
+      <div class="who"><span class="chip script">package-apis.sh</span></div>
+    </div></li>
+    <li class="step"><div class="n">22</div><div class="body">
+      <p class="what">Build and zip the API product the same way, into <code>dist/api-products/JamiiProducts_1.0.0.zip</code>.</p>
+      <div class="who"><span class="chip tool">apictl</span><span class="chip script">package-apis.sh</span></div>
+    </div></li>
+    <li class="step"><div class="n">23</div><div class="body">
+      <p class="what">Jenkins saves the CAR and the API packages with the build and fingerprints them.</p>
+      <p class="detail">These are the files under <b>Last Successful Artifacts</b> on the job page. Fingerprints let Jenkins trace which build produced a given file.</p>
+      <pre class="cmd">archiveArtifacts artifacts: "Jamii_WSO2_Project/target/*.car, dist/apis/**", fingerprint: true</pre>
+      <div class="who"><span class="chip core">archiveArtifacts</span><span class="chip script">Jenkinsfile:50</span></div>
+    </div></li>
+  </ol>
+</section>
+
+<!-- 9 -->
+<section class="phase" id="deploy-dev">
+  <div class="phase-head">
+    <div class="row"><h2>9. Deploy: dev</h2><span class="in-ui">stage “Deploy: dev” · <code>deployTo('dev')</code></span></div>
+    <p>The <code>deployTo()</code> function at the bottom of the Jenkinsfile prepares the environment, then hands over to <code>deploy.sh</code>. From step 31 on, any failed command triggers a full rollback.</p>
+  </div>
+  <ol class="steps">
+    <li class="step"><div class="n">24</div><div class="body">
+      <p class="what">Read the environment's settings from <code>ci/environments/dev.properties</code>.</p>
+      <pre class="cmd">ENABLED=true
+APIM_URL=https://host.docker.internal:9443      MI_MGMT_URL=https://host.docker.internal:9164
+GATEWAY_URL=https://host.docker.internal:8243   MI_URL=http://host.docker.internal:8290
+APIM_CREDENTIALS_ID=apim-dev-admin             MI_CREDENTIALS_ID=mi-dev-admin</pre>
+      <div class="who"><span class="chip plugin">pipeline-utility-steps · readProperties</span><span class="chip script">dev.properties</span></div>
+    </div></li>
+    <li class="step"><div class="n">25</div><div class="body">
+      <p class="what">If <code>ENABLED</code> isn't <code>true</code>, print “placeholder – nothing deployed” and end the stage as passed.</p>
+      <div class="who"><span class="chip script">Jenkinsfile:85</span></div>
+    </div></li>
+    <li class="step"><div class="n">26</div><div class="body">
+      <p class="what">Look up the two saved logins and expose them to the script as <code>APIM_USER</code>/<code>APIM_PASS</code> and <code>MI_USER</code>/<code>MI_PASS</code>.</p>
+      <p class="detail">The credentials were created from casc.yaml at startup. Jenkins masks the values as <code>****</code> if they appear in the log.</p>
+      <div class="who"><span class="chip plugin">credentials-binding · withCredentials</span><span class="chip script">casc.yaml</span></div>
+    </div></li>
+    <li class="step"><div class="n">27</div><div class="body">
+      <p class="what">Set <code>TARGET_ENV=dev</code> and the four URLs as environment variables, then run <code>bash ci/scripts/deploy.sh</code>.</p>
+      <div class="who"><span class="chip core">withEnv · sh</span><span class="chip script">deploy.sh</span></div>
+    </div></li>
+    <li class="step"><div class="n">28</div><div class="body">
+      <p class="what">Pre-flight checks: all required variables are set, there's exactly one <code>.car</code> in <code>target/</code>, and every API and product zip exists.</p>
+      <div class="who"><span class="chip script">deploy.sh</span><span class="chip script">common.sh · require_vars</span></div>
+    </div></li>
+    <li class="step"><div class="n">29</div><div class="body">
+      <p class="what">Wait for MI to answer, up to 20 minutes, checking every 10 seconds.</p>
+      <pre class="cmd">curl -u "$MI_USER:$MI_PASS" https://host.docker.internal:9164/management/login   <span class="c"># → AccessToken</span></pre>
+      <div class="who"><span class="chip script">common.sh · mi_login</span><span class="chip tool">curl · jq</span><span class="chip target">MI management API</span></div>
+    </div></li>
+    <li class="step"><div class="n">30</div><div class="body">
+      <p class="what">Wait for API Manager to answer, then register and log in to the environment with apictl.</p>
+      <pre class="cmd">curl https://host.docker.internal:9443/services/Version
+apictl add env dev --apim https://host.docker.internal:9443
+apictl login dev -u "$APIM_USER" --password-stdin -k</pre>
+      <div class="who"><span class="chip script">common.sh · apim_ready</span><span class="chip tool">apictl · curl</span><span class="chip target">API Manager</span></div>
+    </div></li>
+    <li class="step"><div class="n">31</div><div class="body">
+      <p class="what">Turn on the safety net: from here on, any failed command calls <code>on_error</code>, which runs the rollback.</p>
+      <pre class="cmd">trap 'on_error $LINENO' ERR</pre>
+      <div class="who"><span class="chip script">deploy.sh</span></div>
+    </div></li>
+    <li class="step"><div class="n">32</div><div class="body">
+      <p class="what">Create or update the custom rate-limiting tiers in API Manager.</p>
+      <p class="detail">Tiers must exist before the APIs that use them. This step is not rolled back.</p>
+      <pre class="cmd">apictl import policy rate-limiting -f dist/rate-limiting-policies/&lt;tier&gt;.yaml -e dev --update -k</pre>
+      <div class="who"><span class="chip tool">apictl</span><span class="chip target">API Manager</span></div>
+    </div></li>
+    <li class="step"><div class="n">33</div><div class="body">
+      <p class="what">Back up what's live now, so it can be put back if something fails.</p>
+      <ul class="detail" style="margin:0;padding-left:18px">
+        <li>Export each API. If it doesn't exist yet, note it as new: <code>apictl export api -n &lt;API&gt; -v 1.0.0 -e dev</code></li>
+        <li>Export the API product and save a cleaned copy without instance IDs</li>
+        <li>Find the last CAR that worked for dev in <code>$JENKINS_HOME/jamii-state/dev/last-good/</code></li>
+      </ul>
+      <div class="who"><span class="chip tool">apictl · unzip · sed</span><span class="chip target">API Manager</span></div>
+    </div></li>
+    <li class="step"><div class="n">34</div><div class="body">
+      <p class="what">Deploy the CAR to MI: remove the old CApp, upload the new one, and wait until it's active.</p>
+      <pre class="cmd">DELETE /management/applications/Jamii_WSO2_Project_1.0.0   <span class="c"># then poll until absent</span>
+POST   /management/applications  -F file=@Jamii_WSO2_Project_1.0.0.car
+GET    /management/applications   <span class="c"># poll up to 180 s until active; fail if “faulty”</span></pre>
+      <div class="who"><span class="chip script">common.sh · mi_deploy_car</span><span class="chip tool">curl · jq</span><span class="chip target">MI management API</span></div>
+    </div></li>
+    <li class="step"><div class="n">35</div><div class="body">
+      <p class="what">Check that every API is now live on MI.</p>
+      <pre class="cmd">GET /management/apis   <span class="c"># must list AccountBalanceAPI, CustomersAPI, LoansAPI</span></pre>
+      <div class="who"><span class="chip script">deploy.sh</span><span class="chip target">MI management API</span></div>
+    </div></li>
+    <li class="step"><div class="n">36</div><div class="body">
+      <p class="what">Import each API into API Manager with dev's backend URLs, as a new revision. Each one is published and deployed to the gateway.</p>
+      <pre class="cmd">apictl import api -f dist/apis/LoansAPI_1.0.0.zip -e dev \
+  --params dist/apis/LoansAPI.params.yaml --update --rotate-revision -k</pre>
+      <div class="who"><span class="chip tool">apictl</span><span class="chip target">API Manager · Gateway</span></div>
+    </div></li>
+    <li class="step"><div class="n">37</div><div class="body">
+      <p class="what">Import the API product the same way.</p>
+      <pre class="cmd">apictl import api-product -f dist/api-products/JamiiProducts_1.0.0.zip -e dev \
+  --update-api-product --rotate-revision -k</pre>
+      <div class="who"><span class="chip tool">apictl</span><span class="chip target">API Manager · Gateway</span></div>
+    </div></li>
+    <li class="step"><div class="n">38</div><div class="body">
+      <p class="what">Run the smoke tests.</p>
+      <div class="who"><span class="chip script">ci/scripts/smoke-test.sh</span><span class="chip script">ci/smoke-tests.txt</span></div>
+      <div class="sub">
+        <span class="label">Inside smoke-test.sh</span>
+        <ul>
+          <li>Delete and recreate apictl's helper app, then get an OAuth token: <code>apictl get keys -n &lt;API&gt; -v 1.0.0 -e dev</code></li>
+          <li>For <code>AccountBalanceAPI</code>, which uses API-key security, generate an API key through the Dev Portal REST API: client registration → <code>/oauth2/token</code> → <code>/api/am/devportal/v3/applications/…/api-keys/PRODUCTION/generate</code></li>
+          <li>For each line in <code>smoke-tests.txt</code>, call the API <b>directly on MI</b> (<code>:8290</code>) and <b>through the gateway</b> (<code>:8243/&lt;context&gt;/1.0.0</code>), then compare the HTTP status. The product is only called through the gateway.</li>
+          <li>Retry gateway calls up to 12 times, 5 seconds apart, while the new revision goes live</li>
+          <li>Fail if any API or product has no line in <code>smoke-tests.txt</code></li>
+        </ul>
+        <pre class="cmd"><span class="c"># API | METHOD | path | expected | body</span>
+AccountBalanceAPI | GET  | /0022012569822/balance | 200 |
+LoansAPI          | POST | /eligibility           | 400 | {}
+JamiiProducts     | GET  | /0022012569822/balance | 200 |   <span class="c"># … 9 lines in all</span></pre>
+      </div>
+      <div class="who"><span class="chip tool">apictl · curl · jq</span><span class="chip target">MI runtime</span><span class="chip target">Gateway</span><span class="chip target">Dev Portal API</span></div>
+    </div></li>
+    <li class="step"><div class="n">39</div><div class="body">
+      <p class="what">On success, turn off the safety net and save this CAR as dev's new last-good copy.</p>
+      <pre class="cmd">trap - ERR
+cp Jamii_WSO2_Project_1.0.0.car $JENKINS_HOME/jamii-state/dev/last-good/</pre>
+      <p class="detail">The log shows “Deployment to dev succeeded: MI CApp + 3 APIs + 1 API product(s)”.</p>
+      <div class="who"><span class="chip script">deploy.sh</span></div>
+    </div></li>
+    <li class="step fail"><div class="n">40</div><div class="body">
+      <p class="what">On failure, roll back everything this deploy changed, then fail the stage.</p>
+      <div class="sub fail">
+        <span class="label">rollback() in deploy.sh, in this order</span>
+        <ul>
+          <li>Delete the smoke-test app, whose subscriptions would otherwise block deleting APIs</li>
+          <li>Delete API products that were new in this run</li>
+          <li>For each imported API, newest first: delete it if it was new, otherwise re-import the backup with <code>--params</code> so it's redeployed to the gateway</li>
+          <li>Re-import the backed-up API products</li>
+          <li>If MI was touched: redeploy the last-good CAR, or remove the new CApp if there was no previous one</li>
+          <li>Print “Rollback complete – dev is back to its previous state”, or “ROLLBACK INCOMPLETE … needs manual attention”</li>
+        </ul>
+      </div>
+      <p class="detail">The rate-limiting tiers from step 32 stay in place.</p>
+      <div class="who"><span class="chip script">deploy.sh · on_error · rollback</span><span class="chip tool">apictl · curl</span><span class="chip target">API Manager</span><span class="chip target">MI</span></div>
+    </div></li>
+  </ol>
+</section>
+
+<!-- 10 -->
+<section class="phase" id="uat-prod">
+  <div class="phase-head">
+    <div class="row"><h2>10. Approve and deploy UAT, then prod</h2><span class="in-ui">stages “Approve: uat” … “Deploy: prod”</span></div>
+    <p>These run only if you chose <code>uat</code> or <code>prod</code> in step 2. Otherwise they show as skipped.</p>
+  </div>
+  <ol class="steps">
+    <li class="step gate"><div class="n">41</div><div class="body">
+      <p class="what"><b>Approve: uat</b> pauses the build and shows “dev is green. Promote to UAT?”. Nothing happens until someone clicks <b>Deploy to UAT</b> or <b>Abort</b>.</p>
+      <p class="detail">The pause appears in Stage View and in the new graph view, which has buttons for it. The 60-minute <code>timeout</code> keeps counting while it waits.</p>
+      <div class="who"><span class="chip human">you</span><span class="chip plugin">workflow-aggregator · input</span><span class="chip script">Jenkinsfile:58</span></div>
+    </div></li>
+    <li class="step"><div class="n">42</div><div class="body">
+      <p class="what"><b>Deploy: uat</b> repeats steps 24–40 using <code>ci/environments/uat.properties</code>.</p>
+      <p class="detail">Today <code>uat.properties</code> has <code>ENABLED=false</code>, so step 25 ends the stage with “placeholder – nothing deployed”. The approval in step 41 is still asked first.</p>
+      <div class="who"><span class="chip script">uat.properties</span><span class="chip script">deploy.sh</span></div>
+    </div></li>
+    <li class="step gate"><div class="n">43</div><div class="body">
+      <p class="what"><b>Approve: prod</b> (only for <code>DEPLOY_UP_TO=prod</code>) pauses with “UAT is green. Promote to PRODUCTION?”.</p>
+      <div class="who"><span class="chip human">you</span><span class="chip plugin">workflow-aggregator · input</span></div>
+    </div></li>
+    <li class="step"><div class="n">44</div><div class="body">
+      <p class="what"><b>Deploy: prod</b> repeats steps 24–40 using <code>ci/environments/prod.properties</code>. That file also has <code>ENABLED=false</code> today.</p>
+      <div class="who"><span class="chip script">prod.properties</span><span class="chip script">deploy.sh</span></div>
+    </div></li>
+  </ol>
+</section>
+
+<!-- 11 -->
+<section class="phase" id="finish">
+  <div class="phase-head">
+    <div class="row"><h2>11. Finish</h2><span class="in-ui"><code>post { }</code> block</span></div>
+  </div>
+  <ol class="steps">
+    <li class="step"><div class="n">45</div><div class="body">
+      <p class="what">Print the result message.</p>
+      <p class="detail">Success: “Deployed MI CApp + all APIs up to 'dev'.” Failure: “Pipeline FAILED. If a Deploy stage failed, its log shows the rollback that was done.”</p>
+      <div class="who"><span class="chip script">Jenkinsfile:77</span></div>
+    </div></li>
+    <li class="step"><div class="n">46</div><div class="body">
+      <p class="what">Jenkins saves the build record to <code>jobs/jamii-api-deploy/builds/&lt;N&gt;/</code>: log, stage results, artifacts and the commit used. It then deletes builds beyond the newest 20.</p>
+      <div class="who"><span class="chip core">jenkins core</span></div>
+    </div></li>
+    <li class="step"><div class="n">47</div><div class="body">
+      <p class="what">The job page updates: status icon, Stage View row and stage graph.</p>
+      <p class="detail">Both views were updating live during the run. The graph appears on the job and build pages because casc.yaml sets <code>showGraphOnJobPage</code> and <code>showGraphOnBuildPage</code>.</p>
+      <div class="who"><span class="chip plugin">pipeline-stage-view</span><span class="chip plugin">pipeline-graph-view</span></div>
+    </div></li>
+  </ol>
+</section>
+
+<section class="phase" id="reference">
+  <div class="phase-head">
+    <div class="row"><h2>Reference</h2></div>
+    <p>Every plugin, script and tool that appears above, and the steps where it does its work.</p>
+  </div>
+  <div class="tables">
+    <div class="tbl"><table>
+      <thead><tr><th>Plugin (plugins.txt)</th><th>Job in this run</th><th>Steps</th></tr></thead>
+      <tbody>
+        <tr><td><code>configuration-as-code</code></td><td>Set up users, credentials, appearance and the job from casc.yaml, at Jenkins startup only</td><td>before 1</td></tr>
+        <tr><td><code>job-dsl</code></td><td>Turned the <code>pipelineJob</code> block into config.xml, at startup</td><td>4</td></tr>
+        <tr><td><code>workflow-aggregator</code></td><td>Runs the Jenkinsfile: stages, <code>sh</code>, <code>dir</code>, <code>input</code>, <code>when</code>, <code>post</code></td><td>6–47</td></tr>
+        <tr><td><code>git</code></td><td>Fetches and checks out the commit, records changes</td><td>5, 9, 10</td></tr>
+        <tr><td><code>timestamper</code></td><td>Timestamps on every log line</td><td>7</td></tr>
+        <tr><td><code>pipeline-utility-steps</code></td><td><code>readProperties</code> for the environment file</td><td>24</td></tr>
+        <tr><td><code>credentials-binding</code></td><td><code>withCredentials</code>, passwords into variables, masked in logs</td><td>26</td></tr>
+        <tr><td><code>pipeline-stage-view</code></td><td>Stage View table</td><td>47</td></tr>
+        <tr><td><code>pipeline-graph-view</code></td><td>Stage graph and per-stage logs</td><td>41, 47</td></tr>
+      </tbody>
+    </table></div>
+    <div class="tbl"><table>
+      <thead><tr><th>Script / file</th><th>Job in this run</th><th>Steps</th></tr></thead>
+      <tbody>
+        <tr><td><code>infra/jenkins/casc.yaml</code></td><td>Job definition, credentials, settings (read at startup)</td><td>3, 4, 26, 47</td></tr>
+        <tr><td><code>Jenkinsfile</code></td><td>The pipeline: options, parameters, stages, <code>deployTo()</code></td><td>1–47</td></tr>
+        <tr><td><code>ci/scripts/common.sh</code></td><td>Shared helpers for MI, API Manager and apictl</td><td>11, 28–34</td></tr>
+        <tr><td><code>ci/scripts/validate.sh</code></td><td>Static checks</td><td>11–16</td></tr>
+        <tr><td><code>Jamii_WSO2_Project/pom.xml</code></td><td>Maven build and tests of the CAR</td><td>17, 18</td></tr>
+        <tr><td><code>ci/scripts/package-apis.sh</code></td><td>apictl packages for APIs, tiers and product</td><td>19–22</td></tr>
+        <tr><td><code>ci/environments/*.properties</code></td><td>URLs, credential IDs and the ENABLED flag per environment</td><td>24, 25, 42, 44</td></tr>
+        <tr><td><code>ci/scripts/deploy.sh</code></td><td>Deploy with backup and rollback</td><td>27–40</td></tr>
+        <tr><td><code>ci/scripts/smoke-test.sh</code> + <code>ci/smoke-tests.txt</code></td><td>Live calls on MI and the gateway</td><td>38</td></tr>
+      </tbody>
+    </table></div>
+    <div class="tbl"><table>
+      <thead><tr><th>Tool (Dockerfile)</th><th>Used for</th></tr></thead>
+      <tbody>
+        <tr><td><code>git</code></td><td>Checkout (run by the git plugin)</td></tr>
+        <tr><td><code>maven</code></td><td>Build and test the CAR</td></tr>
+        <tr><td><code>apictl 4.7.2</code></td><td>Bundle packages; log in to, import into and export from API Manager; get tokens</td></tr>
+        <tr><td><code>curl</code></td><td>MI management API, API Manager health check, Dev Portal API, smoke calls</td></tr>
+        <tr><td><code>jq</code></td><td>Read JSON replies from MI and API Manager</td></tr>
+        <tr><td><code>xmllint</code></td><td>Check XML and read MI API contexts</td></tr>
+        <tr><td><code>zip</code> / <code>unzip</code></td><td>Unpack exported product backups</td></tr>
+      </tbody>
+    </table></div>
+    <div class="tbl"><table>
+      <thead><tr><th>Target (dev)</th><th>Address from the Jenkins container</th><th>Steps</th></tr></thead>
+      <tbody>
+        <tr><td>MI management API</td><td><code>https://host.docker.internal:9164</code></td><td>29, 34, 35</td></tr>
+        <tr><td>MI runtime</td><td><code>http://host.docker.internal:8290</code></td><td>38</td></tr>
+        <tr><td>API Manager (Publisher, Dev Portal)</td><td><code>https://host.docker.internal:9443</code></td><td>30, 32, 33, 36–38</td></tr>
+        <tr><td>Gateway</td><td><code>https://host.docker.internal:8243</code></td><td>38</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</section>
+
+<footer>Based on the Jenkinsfile, infra/jenkins/ and ci/ in the jamii-savings repo as of 4 Nov 2026. Line references point at those files.</footer>
+</div>

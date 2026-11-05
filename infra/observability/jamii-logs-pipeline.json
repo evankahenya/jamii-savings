@@ -1,0 +1,261 @@
+{
+  "description": "Jamii: mask client data and credentials, then parse WSO2 log lines. Masking runs first so nothing unmasked is indexed.",
+  "processors": [
+    {
+      "gsub": {
+        "tag": "mask-credentials",
+        "field": "message",
+        "pattern": "(?i)((?:Authorization|apikey|Internal-Key|Cookie|Set-Cookie)=)[^\"]*",
+        "replacement": "$1***",
+        "ignore_missing": true
+      }
+    },
+    {
+      "gsub": {
+        "tag": "mask-bearer-tokens",
+        "field": "message",
+        "pattern": "(?i)(Bearer\\s+)[A-Za-z0-9._~+/=-]+",
+        "replacement": "$1***",
+        "ignore_missing": true
+      }
+    },
+    {
+      "gsub": {
+        "tag": "mask-json-fields",
+        "description": "plain JSON (\"key\":\"v\") and JSON escaped inside a string (\\\"key\\\":\\\"v\\\"), as in APIM API logs",
+        "field": "message",
+        "pattern": "(?i)((\\\\?)\"(?:fullName|full_name|firstName|lastName|idNumber|id_number|nationalId|national_id|phone|phoneNumber|phone_number|msisdn|mobileNumber|mobile_number|email|emailAddress|email_address|nationalIdLastFour|customerReference|customer_reference|reference|kraPin|kra_pin|dateOfBirth|date_of_birth|cifNumber|cif_number|balance|availableBalance|available_balance)\\2\"\\s*:\\s*)(?:\\2\"(?:[^\"\\\\]|\\\\(?!\"))*\\2\"|-?[0-9.]+)",
+        "replacement": "$1$2\"***$2\"",
+        "ignore_missing": true
+      }
+    },
+    {
+      "gsub": {
+        "tag": "mask-key-value-fields",
+        "field": "message",
+        "pattern": "(?i)\\b((?:fullName|idNumber|nationalId|phone|phoneNumber|msisdn|mobileNumber|email|emailAddress|nationalIdLastFour|customerReference|kraPin|dateOfBirth|cifNumber|balance)=)[^\\s|&,;}]+",
+        "replacement": "$1***",
+        "ignore_missing": true
+      }
+    },
+    {
+      "gsub": {
+        "tag": "mask-account-number-json",
+        "field": "message",
+        "pattern": "(?i)((\\\\?)\"account_?number\\2\"\\s*:\\s*\\2\")[0-9]{9}([0-9]{4}\\2\")",
+        "replacement": "$1*********$3",
+        "ignore_missing": true
+      }
+    },
+    {
+      "gsub": {
+        "tag": "mask-emails",
+        "field": "message",
+        "pattern": "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}",
+        "replacement": "***@***",
+        "ignore_missing": true
+      }
+    },
+    {
+      "gsub": {
+        "tag": "mask-ke-phone-numbers",
+        "field": "message",
+        "pattern": "(?<![0-9])(?:\\+?254|0)[17][0-9]{8}(?![0-9])",
+        "replacement": "***PHONE***",
+        "ignore_missing": true
+      }
+    },
+    {
+      "gsub": {
+        "tag": "mask-account-numbers-anywhere",
+        "description": "13-digit account numbers in paths (apiTo, requestURI) and text; keeps the last 4 like MI does",
+        "field": "message",
+        "pattern": "(?<![0-9*])[0-9]{9}([0-9]{4})(?![0-9])",
+        "replacement": "*********$1",
+        "ignore_missing": true
+      }
+    },
+    {
+      "gsub": {
+        "tag": "mask-customer-id-paths",
+        "field": "message",
+        "pattern": "(customers/(?:[0-9.]+/)?(?:records/)?)[^/?\\s,\"}\\\\]+",
+        "replacement": "$1***",
+        "ignore_missing": true
+      }
+    },
+    {
+      "gsub": {
+        "tag": "mask-id-fields",
+        "description": "customer record ids in backend payloads, e.g. {\"data\":{\"id\":\"<uuid>\"}}",
+        "field": "message",
+        "pattern": "(?i)((\\\\?)\"(?:id|customerId|customer_id)\\2\"\\s*:\\s*)\\2\"(?:[^\"\\\\]|\\\\(?!\"))*\\2\"",
+        "replacement": "$1$2\"***$2\"",
+        "ignore_missing": true
+      }
+    },
+    {
+      "grok": {
+        "tag": "parse-wso2-line",
+        "field": "message",
+        "patterns": [
+          "^\\[%{TIMESTAMP_ISO8601:wso2.timestamp}\\]\\s+%{LOGLEVEL:log.level}\\s+\\{API_LOG\\}\\s+%{NOTSPACE:jamii.api}\\s+-\\s+%{GREEDYDATA:jamii.api_log}",
+          "^\\[%{TIMESTAMP_ISO8601:wso2.timestamp}\\]\\s+%{LOGLEVEL:log.level}\\s+\\{%{DATA:log.logger}\\}.*?apimMetrics:\\s*%{DATA:apim.event_type},\\s*properties\\s*:%{GREEDYDATA:jamii.metrics}",
+          "^\\[%{TIMESTAMP_ISO8601:wso2.timestamp}\\]\\s+%{LOGLEVEL:log.level}\\s+(?:\\{%{DATA:log.logger}\\}\\s+)?-\\s+(?:\\{api:%{NOTSPACE:jamii.api}(?:\\s+%{WORD:http.request.method}\\s+%{NOTSPACE:url.path})?\\}\\s+)?(?:\\{proxy:%{NOTSPACE:jamii.proxy}\\}\\s+)?%{GREEDYDATA:jamii.message}"
+        ],
+        "ignore_failure": true
+      }
+    },
+    {
+      "json": {
+        "tag": "parse-apim-api-log",
+        "if": "ctx.jamii?.api_log != null",
+        "field": "jamii.api_log",
+        "target_field": "apim",
+        "ignore_failure": true
+      }
+    },
+    {
+      "set": {
+        "tag": "label-apim-api-log",
+        "if": "ctx.jamii?.api_log != null",
+        "field": "log.logger",
+        "value": "API_LOG"
+      }
+    },
+    {
+      "json": {
+        "tag": "parse-apim-analytics-event",
+        "description": "ELK analytics events (APIM [apim.analytics] type = elk)",
+        "if": "ctx.jamii?.metrics != null",
+        "field": "jamii.metrics",
+        "target_field": "apim.analytics",
+        "ignore_failure": true
+      }
+    },
+    {
+      "remove": {
+        "field": [
+          "jamii.api_log",
+          "jamii.metrics"
+        ],
+        "ignore_missing": true
+      }
+    },
+    {
+      "script": {
+        "tag": "flow-and-event",
+        "description": "MI Log mediator lines '[Flow] Event | k=v' -> jamii.flow, jamii.event and jamii.kv.*; other lines -> jamii.event with ids/numbers normalised, for 'top messages' charts",
+        "if": "ctx.jamii?.message instanceof String",
+        "lang": "painless",
+        "ignore_failure": true,
+        "params": {
+          "keys": [
+            "status",
+            "backendStatus",
+            "apiStatus",
+            "retryCount",
+            "cacheAgeSeconds",
+            "reason",
+            "errorCode",
+            "errorMessage",
+            "errorDetail",
+            "errorStage",
+            "errorReason",
+            "lastError",
+            "error",
+            "contentType",
+            "correlationIdSource"
+          ]
+        },
+        "source": "String m = ctx.jamii.message; def mm = /^\\[([^\\]]+)\\]\\s*([^|]*?)\\s*(?:\\||$)/.matcher(m); if (mm.find()) { ctx.jamii.flow = mm.group(1); String ev = /retry [0-9]+ of [0-9]+ in [0-9]+ms/.matcher(mm.group(2)).replaceAll('retry N of N in Nms'); ctx.jamii.event = ev; Map kv = new HashMap(); for (String part : m.splitOnToken(' | ')) { int i = part.indexOf('='); if (i > 0) { String k = part.substring(0, i).trim(); if (params.keys.contains(k)) { kv.put(k, part.substring(i + 1).trim()); } } } if (!kv.isEmpty()) { ctx.jamii.kv = kv; } } else { String e = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/.matcher(m).replaceAll('<id>'); e = /\\b[0-9]+\\b/.matcher(e).replaceAll('N'); ctx.jamii.event = e.length() > 140 ? e.substring(0, 140) : e; }"
+      }
+    },
+    {
+      "convert": {
+        "field": "jamii.kv.retryCount",
+        "type": "long",
+        "ignore_missing": true,
+        "ignore_failure": true
+      }
+    },
+    {
+      "convert": {
+        "field": "jamii.kv.cacheAgeSeconds",
+        "type": "long",
+        "ignore_missing": true,
+        "ignore_failure": true
+      }
+    },
+    {
+      "grok": {
+        "tag": "cache-hit-miss",
+        "if": "ctx.jamii?.event instanceof String && ctx.jamii.event.startsWith('Cache ')",
+        "field": "jamii.event",
+        "patterns": [
+          "^Cache %{WORD:jamii.cache}"
+        ],
+        "ignore_failure": true
+      }
+    },
+    {
+      "grok": {
+        "tag": "extract-correlation-id",
+        "field": "message",
+        "patterns": [
+          "(?:correlationId|requestId)=%{CORRID:jamii.correlation_id}",
+          "X-Correlation-ID=%{CORRID:jamii.correlation_id}"
+        ],
+        "pattern_definitions": {
+          "CORRID": "[A-Za-z0-9._:\\-]+"
+        },
+        "ignore_failure": true
+      }
+    },
+    {
+      "grok": {
+        "tag": "extract-trace-id",
+        "description": "W3C traceparent header, so Kibana can link the log line to its APM trace",
+        "field": "message",
+        "patterns": [
+          "traceparent=00-%{TRACEID:trace.id}-"
+        ],
+        "pattern_definitions": {
+          "TRACEID": "[0-9a-f]{32}"
+        },
+        "ignore_failure": true
+      }
+    },
+    {
+      "script": {
+        "tag": "service-from-container",
+        "lang": "painless",
+        "ignore_failure": true,
+        "source": "def n = ctx.container?.name; if (n != null) { def m = /-(apim|mi|activemq)-\\d+$/.matcher(n); if (m.find()) { if (ctx.service == null) { ctx.service = [:]; } ctx.service.name = 'jamii-' + m.group(1); } }"
+      }
+    },
+    {
+      "remove": {
+        "field": [
+          "event.original",
+          "log.original"
+        ],
+        "ignore_missing": true
+      }
+    }
+  ],
+  "on_failure": [
+    {
+      "set": {
+        "field": "error.pipeline",
+        "value": "{{ _ingest.on_failure_message }}"
+      }
+    },
+    {
+      "set": {
+        "field": "message",
+        "value": "[redacted: masking pipeline failed for this line]"
+      }
+    }
+  ]
+}
