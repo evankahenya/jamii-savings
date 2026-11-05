@@ -5,6 +5,7 @@ services:
   jenkins:
     build: .
     image: jamii-jenkins:2.541.3
+    pull_policy: build
     environment:
       JAVA_OPTS: >-
         -Xmx768m

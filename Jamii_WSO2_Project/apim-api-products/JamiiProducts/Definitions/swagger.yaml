@@ -17,7 +17,7 @@ paths:
        -
         name: accountNumber
         in: path
-        description: 13-digit account number
+        description: "13-digit account number, optionally prefixed with ACC- in any case (e.g. 0051012695378 or acc-0051012695378). The prefix and any characters other than letters, digits or '-' are removed."
         required: true
         style: simple
         explode: false
@@ -71,16 +71,16 @@ paths:
                     requestId: 7a1d2e3f-4b5c-4d6e-8f90-a1b2c3d4e5f6
                     timestamp: 2026-10-12T09:16:02.456+03:00
         "400":
-          description: Account number is not exactly 13 digits
+          description: Account number is not 13 digits after removing the ACC- prefix
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
               examples:
                 invalidAccountNumber:
-                  summary: Account number is not 13 digits
+                  summary: Account number has the wrong format
                   value:
-                    error: Invalid account number. Expected exactly 13 digits.
+                    error: "Invalid account number. Expected 13 digits, optionally prefixed with ACC-, e.g. 0051012695378 or ACC-0051012695378."
                     code: 400
                     requestId: b4c5d6e7-f809-4a1b-9c2d-3e4f5a6b7c8d
                     timestamp: 2026-10-12T09:17:11.789+03:00

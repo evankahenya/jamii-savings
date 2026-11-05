@@ -11,31 +11,44 @@
             <property name="requestTimestamp" scope="default" type="STRING"
                       expression="get-property('SYSTEM_DATE', &quot;yyyy-MM-dd'T'HH:mm:ss.SSSXXX&quot;)"/>
 
-            <!-- Capture path param -->
+            <!-- Sanitize path param: keep only letters, digits and '-', then drop an ACC- prefix in any case (acc-0022012569822 -> 0022012569822) -->
+            <script language="js"><![CDATA[
+                var raw = mc.getProperty("uri.var.accountNumber");
+                raw = raw == null ? "" : String(raw);
+                try { raw = decodeURIComponent(raw); } catch (e) {}
+                var clean = raw.replace(/[^A-Za-z0-9-]/g, "").toUpperCase().replace(/^ACC-?/, "");
+                mc.setProperty("accountNumberClean", clean);
+                mc.setProperty("accountNumberRemovedChars", String(raw.length - clean.length));
+            ]]></script>
             <variable name="accountNumber" type="STRING"
-                      expression="$ctx:uri.var.accountNumber"/>
+                      expression="${properties.synapse.accountNumberClean}"/>
+            <!-- the data service endpoint builds its URL from uri.var.accountNumber -->
+            <property name="uri.var.accountNumber" scope="default" type="STRING"
+                      expression="$ctx:accountNumberClean"/>
 
             <log category="INFO">
-                <message>[AccountBalanceAPI] Request received | requestId=${properties.synapse.requestId} | timestamp=${properties.synapse.requestTimestamp}</message>
+                <message>[AccountBalanceAPI] Request received | requestId=${properties.synapse.requestId} | timestamp=${properties.synapse.requestTimestamp} | removedChars=${properties.synapse.accountNumberRemovedChars}</message>
             </log>
 
-            <!-- Validate account number length  -->
-            <filter source="$ctx:uri.var.accountNumber" regex="^[0-9]{13}$">
+            <!-- Validate: after the prefix is removed, exactly 13 digits -->
+            <filter source="$ctx:accountNumberClean" regex="^[0-9]{13}$">
                 <then>
                     <!-- Masked form for logs: last 4 digits only -->
                     <variable name="accountNumberMasked" type="STRING"
                               expression="${'*********' + subString(vars.accountNumber, 9)}"/>
+
+
                     <log category="DEBUG">
                         <message>[AccountBalanceAPI] Validation passed | requestId=${properties.synapse.requestId} | accountNumber=${vars.accountNumberMasked}</message>
                     </log>
                 </then>
                 <else>
                     <log category="ERROR">
-                        <message>[AccountBalanceAPI] Validation failed: account number must be exactly 13 digits | requestId=${properties.synapse.requestId} | responding HTTP 400</message>
+                        <message>[AccountBalanceAPI] Validation failed: account number must be 13 digits (optional ACC- prefix) | requestId=${properties.synapse.requestId} | responding HTTP 400</message>
                     </log>
                     <property name="HTTP_SC" value="400" scope="axis2"/>
                     <payloadFactory media-type="json">
-                        <format>{"error":"Invalid account number. Expected exactly 13 digits.","code":400,"requestId":"${properties.synapse.requestId}","timestamp":"${properties.synapse.requestTimestamp}"}</format>
+                        <format>{"error":"Invalid account number. Expected 13 digits, optionally prefixed with ACC-, e.g. 0051012695378 or ACC-0051012695378.","code":400,"requestId":"${properties.synapse.requestId}","timestamp":"${properties.synapse.requestTimestamp}"}</format>
                     </payloadFactory>
                     <respond/>
                 </else>
@@ -129,7 +142,12 @@
                 <else/>
             </filter>
 
+
+            
+
             <!-- Build success response -->
+            
+        <!-- ${toUpper(payload.account.status)=='Active'}-->
             <payloadFactory media-type="json">
                 <format>{
                             "accountNumber": "${payload.account.accountNumber}",
@@ -139,7 +157,9 @@
                                 "currency": "${payload.account.currency}"
                             },
                             "requestId": "${properties.synapse.requestId}",
-                            "timestamp": "${properties.synapse.requestTimestamp}"
+                            "timestamp": "${properties.synapse.requestTimestamp}",
+                            "some_date": "${payload.account.some_date}",
+                            "locked_ammount": "${payload.account.locked_ammount}"
 }</format>
             </payloadFactory>
             <property name="HTTP_SC" value="200" scope="axis2"/>
@@ -155,6 +175,7 @@
             </log>
             <respond/>
         </inSequence>
+
 
         <faultSequence>
             <log category="ERROR">

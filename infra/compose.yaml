@@ -60,6 +60,7 @@ services:
         MI_BASE_IMAGE: ${MI_BASE_IMAGE:-wso2/wso2mi:4.6.0}
         ACTIVEMQ_IMAGE: ${ACTIVEMQ_IMAGE:-apache/activemq-classic:5.18.7}
     image: jamii-mi-runtime:4.6.0
+    pull_policy: build
     hostname: mi
     environment:
       JAVA_OPTS: ${MI_JAVA_OPTS:--Xms256m -Xmx768m}

@@ -3,8 +3,8 @@ info:
   title: AccountBalanceAPI
   description: >
     Returns the current balance of an account from the Jamii Savings database
-    (AccountDataService). Repeat requests for the same account within 60
-    seconds are served from cache.
+    (AccountDataService). Repeat requests for the same account within 60 seconds
+    are served from cache.
   version: 1.0.0
 servers:
   - url: http://localhost:8290/accounts
@@ -13,12 +13,13 @@ paths:
   /{accountNumber}/balance:
     get:
       summary: Get account balance
-      description: Returns the current balance of an account. Repeat requests for the same account within 60 seconds are served from cache.
+      description: Returns the current balance of an account. Repeat requests for the
+        same account within 60 seconds are served from cache.
       parameters:
         - name: accountNumber
           in: path
+          description: "13-digit account number, optionally prefixed with ACC- in any case (e.g. 0051012695378 or acc-0051012695378). The prefix and any characters other than letters, digits or '-' are removed."
           required: true
-          description: 13-digit account number
           schema:
             type: string
           example: "0051012695378"
@@ -35,7 +36,8 @@ paths:
                   - HIT
                 example: MISS
             X-Cache-Age:
-              description: Seconds since the cached response was fetched from the database (0 on MISS)
+              description: Seconds since the cached response was fetched from the database (0
+                on MISS)
               schema:
                 type: integer
                 example: 0
@@ -53,7 +55,7 @@ paths:
                       amount: 15250.75
                       currency: KES
                     requestId: 3f2b8c1e-9a4d-4e7b-b1c2-5d6e7f8a9b0c
-                    timestamp: "2026-10-12T09:15:30.123+03:00"
+                    timestamp: 2026-10-12T09:15:30.123+03:00
                 dormant:
                   summary: Dormant account
                   value:
@@ -63,24 +65,25 @@ paths:
                       amount: 0
                       currency: KES
                     requestId: 7a1d2e3f-4b5c-4d6e-8f90-a1b2c3d4e5f6
-                    timestamp: "2026-10-12T09:16:02.456+03:00"
+                    timestamp: 2026-10-12T09:16:02.456+03:00
         "400":
-          description: Account number is not exactly 13 digits
+          description: Account number is not 13 digits after removing the ACC- prefix
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
               examples:
                 invalidAccountNumber:
-                  summary: Account number is not 13 digits
+                  summary: Account number has the wrong format
                   value:
-                    error: Invalid account number. Expected exactly 13 digits.
+                    error: "Invalid account number. Expected 13 digits, optionally prefixed with ACC-, e.g. 0051012695378 or ACC-0051012695378."
                     code: 400
                     requestId: b4c5d6e7-f809-4a1b-9c2d-3e4f5a6b7c8d
-                    timestamp: "2026-10-12T09:17:11.789+03:00"
+                    timestamp: 2026-10-12T09:17:11.789+03:00
         "401":
-          description: |
-            No API key, or the API key is not valid. Send the key from the Developer Portal in the `ApiKey` header.
+          description: >
+            No API key, or the API key is not valid. Send the key from the
+            Developer Portal in the `ApiKey` header.
           content:
             application/json:
               schema:
@@ -91,22 +94,34 @@ paths:
                   value:
                     error: Missing credentials. The request has no API key or access token.
                     code: 401
-                    details: "Send the API key in the 'ApiKey' header (AccountBalanceAPI) or an OAuth2 access token in the 'Authorization: Bearer' header (other APIs). Get one in the Developer Portal under Applications. (gateway error 900902)"
+                    details: "Send the API key in the 'ApiKey' header (AccountBalanceAPI) or an
+                      OAuth2 access token in the 'Authorization: Bearer' header
+                      (other APIs). Get one in the Developer Portal under
+                      Applications. (gateway error 900902)"
                     requestId: 0d6c1f7e-2a4b-4c8d-9e1f-3a5b7c9d1e2f
-                    timestamp: "2026-10-12T09:15:30.123+03:00"
+                    timestamp: 2026-10-12T09:15:30.123+03:00
                 invalidKey:
                   summary: API key not valid or expired
                   value:
-                    error: Invalid credentials. The API key or access token is not valid, or has expired.
+                    error: Invalid credentials. The API key or access token is not valid, or has
+                      expired.
                     code: 401
-                    details: Generate a new API key or access token in the Developer Portal, from an application that is subscribed to this API. (gateway error 900901)
+                    details: Generate a new API key or access token in the Developer Portal, from an
+                      application that is subscribed to this API. (gateway error
+                      900901)
                     requestId: 0d6c1f7e-2a4b-4c8d-9e1f-3a5b7c9d1e2f
-                    timestamp: "2026-10-12T09:15:30.123+03:00"
+                    timestamp: 2026-10-12T09:15:30.123+03:00
         "403":
-          description: |
-            The API key is valid, but it isn't linked to an application that is subscribed to this API. Fix it in the Developer Portal, then call again with the same key:
-            - Key created on this API's page: open the API, go to API Keys and associate the key with a subscribed application.
-            - Key created in an application: subscribe that application to AccountBalanceAPI.
+          description: >
+            The API key is valid, but it isn't linked to an application that is
+            subscribed to this API. Fix it in the Developer Portal, then call
+            again with the same key:
+
+            - Key created on this API's page: open the API, go to API Keys and
+            associate the key with a subscribed application.
+
+            - Key created in an application: subscribe that application to
+            AccountBalanceAPI.
           content:
             application/json:
               schema:
@@ -115,11 +130,18 @@ paths:
                 notLinkedToSubscribedApp:
                   summary: The key isn't associated with a subscribed application
                   value:
-                    error: Forbidden. This API key or access token is not linked to an application that is subscribed to this API.
+                    error: Forbidden. This API key or access token is not linked to an application
+                      that is subscribed to this API.
                     code: 403
-                    details: "In the Developer Portal: if you created the key on this API's page, open the API, go to API Keys and associate the key with an application that is subscribed to this API. If you created the key or token in an application, subscribe that application to this API (API, then Subscriptions). Then call again with the same key or token. (gateway error 900908)"
+                    details: "In the Developer Portal: if you created the key on this API's page,
+                      open the API, go to API Keys and associate the key with an
+                      application that is subscribed to this API. If you created
+                      the key or token in an application, subscribe that
+                      application to this API (API, then Subscriptions). Then
+                      call again with the same key or token. (gateway error
+                      900908)"
                     requestId: 0d6c1f7e-2a4b-4c8d-9e1f-3a5b7c9d1e2f
-                    timestamp: "2026-10-12T09:15:30.123+03:00"
+                    timestamp: 2026-10-12T09:15:30.123+03:00
         "404":
           description: No account with this number in the database
           content:
@@ -134,7 +156,7 @@ paths:
                     accountNumber: "1234567890000"
                     code: 404
                     requestId: c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f
-                    timestamp: "2026-10-12T09:18:45.012+03:00"
+                    timestamp: 2026-10-12T09:18:45.012+03:00
         "500":
           description: The database query failed (AccountDataService returned an error)
           content:
@@ -148,9 +170,10 @@ paths:
                     error: Internal server error. Database unavailable
                     code: 500
                     requestId: d9e8f7a6-b5c4-4d3e-9f2a-1b0c9d8e7f6a
-                    timestamp: "2026-10-12T09:19:20.345+03:00"
+                    timestamp: 2026-10-12T09:19:20.345+03:00
         "503":
-          description: The database did not respond within 5 seconds, or an unexpected error occurred while processing the request
+          description: The database did not respond within 5 seconds, or an unexpected
+            error occurred while processing the request
           content:
             application/json:
               schema:
@@ -162,28 +185,28 @@ paths:
                     error: Service unavailable
                     code: 503
                     requestId: e5f6a7b8-c9d0-4e1f-a2b3-c4d5e6f7a8b9
-                    timestamp: "2026-10-12T09:20:05.678+03:00"
+                    timestamp: 2026-10-12T09:20:05.678+03:00
 components:
   schemas:
     AccountBalance:
-      type: object
       required:
         - accountNumber
-        - status
         - balance
         - requestId
+        - status
         - timestamp
+      type: object
       properties:
         accountNumber:
           type: string
           example: "0051012695378"
         status:
           type: string
+          example: ACTIVE
           enum:
             - ACTIVE
             - DORMANT
             - CLOSED
-          example: ACTIVE
         balance:
           $ref: "#/components/schemas/Money"
         requestId:
@@ -192,14 +215,14 @@ components:
           example: 3f2b8c1e-9a4d-4e7b-b1c2-5d6e7f8a9b0c
         timestamp:
           type: string
-          format: date-time
           description: Time the request was received
-          example: "2026-10-12T09:15:30.123+03:00"
+          format: date-time
+          example: 2026-10-12T09:15:30.123+03:00
     Money:
-      type: object
       required:
         - amount
         - currency
+      type: object
       properties:
         amount:
           type: number
@@ -208,23 +231,25 @@ components:
           type: string
           example: KES
     Error:
-      type: object
       required:
-        - error
         - code
+        - error
         - requestId
         - timestamp
+      type: object
       properties:
         error:
           type: string
-          example: Invalid account number. Expected exactly 13 digits.
+          example: "Invalid account number. Expected 13 digits, optionally prefixed with ACC-, e.g. 0051012695378 or ACC-0051012695378."
         code:
           type: integer
           example: 400
         details:
           type: string
-          description: What to do to fix the problem. Sent with 401 and 403 errors from the gateway.
-          example: In the Developer Portal, associate the API key with an application that is subscribed to this API.
+          description: What to do to fix the problem. Sent with 401 and 403 errors from
+            the gateway.
+          example: In the Developer Portal, associate the API key with an application that
+            is subscribed to this API.
         requestId:
           type: string
           description: ID generated by this API for the request
@@ -232,13 +257,13 @@ components:
         timestamp:
           type: string
           format: date-time
-          example: "2026-10-12T09:17:11.789+03:00"
+          example: 2026-10-12T09:17:11.789+03:00
     AccountNotFoundError:
       allOf:
         - $ref: "#/components/schemas/Error"
-        - type: object
-          required:
+        - required:
             - accountNumber
+          type: object
           properties:
             accountNumber:
               type: string

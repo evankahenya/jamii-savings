@@ -34,7 +34,8 @@ CREATE TABLE account (
     status                 VARCHAR(10)    NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'DORMANT', 'CLOSED')),
     opened_date            DATE           NOT NULL,
     closed_date            DATE,
-    some_date              DATE           NOT NULL DEFAULT '2026-11-05',
+    some_date              DATE           NULL DEFAULT "",
+	blocked_ammount       DECIMAL(18,2)    NULL  DEFAULT 0
     CHECK (balance >= -overdraft_limit),
     CHECK (overdraft_limit = 0 OR account_type IN ('CURRENT', 'PREMIUM', 'BUSINESS')),
     CHECK (status <> 'CLOSED' OR (balance = 0 AND overdraft_limit = 0 AND closed_date IS NOT NULL)),

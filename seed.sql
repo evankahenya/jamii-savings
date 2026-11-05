@@ -103,3 +103,4 @@ INSERT INTO account (account_id, account_number, customer_id, branch_code, accou
 (48, '0111043281729', 37, '011', 'GROUP', 'KES', 12400.00, 0, 'DORMANT', '2016-10-03', NULL),
 (49, '0401013346044', 2, '040', 'SAVINGS', 'KES', 156780.00, 0, 'ACTIVE', '2017-03-06', NULL),
 (50, '0021033035268', 24, '002', 'SAVINGS', 'KES', 12050775.45, 0, 'ACTIVE', '2015-01-12', NULL);
+

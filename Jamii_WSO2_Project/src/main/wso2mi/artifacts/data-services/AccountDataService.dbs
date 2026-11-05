@@ -7,14 +7,16 @@
     </config>
 
     <query id="GetAccountBalance" useConfig="JamiiDB">
-        <sql>SELECT account_number, status, balance, currency FROM account WHERE account_number = ?</sql>
+        <sql>SELECT account_number, status, balance, currency, some_date, locked_ammount FROM account WHERE account_number = ?</sql>
         <param name="accountNumber" sqlType="STRING" type="IN" ordinal="1"/>
         <result outputType="json">{
   "account": {
     "accountNumber": "$account_number",
     "status": "$status",
     "balance": "$balance",
-    "currency": "$currency"
+    "currency": "$currency",
+    "some_date": "$some_date",
+    "locked_ammount": "$locked_ammount"
   }
 }</result>
     </query>
